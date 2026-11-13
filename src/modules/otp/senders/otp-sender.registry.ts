@@ -6,6 +6,11 @@ type OtpSenderFactory = (config: AppConfig) => OtpSender;
 
 /** Add real SMS providers here, keyed by the OTP_PROVIDER value that selects them. */
 const SENDERS: Record<string, OtpSenderFactory> = {
+  // No SMS delivery configured: valid only while PHONE_VERIFICATION_REQUIRED=false.
+  none: () => ({
+    name: 'none',
+    send: () => Promise.reject(new Error('No OTP provider is configured (OTP_PROVIDER=none)')),
+  }),
   console: (config) => new ConsoleOtpSender(config.env),
 };
 

@@ -53,6 +53,8 @@ export class AuthService {
     const email = dto.email?.toLowerCase();
     const passwordHash = await this.passwords.hash(dto.password);
 
+    if (!this.verificationRequired) return this.registerWithoutVerification(dto, phoneNumber, passwordHash, client);
+
     const existing = await this.prisma.user.findUnique({ where: { phoneNumber } });
     if (existing?.phoneVerifiedAt) {
       throw new AppException(
@@ -84,21 +86,7 @@ export class AuthService {
         return user.id;
       });
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-        const target = JSON.stringify(err.meta?.target ?? '');
-        throw target.includes('email')
-          ? new AppException(
-              HttpStatus.CONFLICT,
-              ErrorCode.EMAIL_ALREADY_IN_USE,
-              'This email address is already in use',
-            )
-          : new AppException(
-              HttpStatus.CONFLICT,
-              ErrorCode.PHONE_ALREADY_REGISTERED,
-              'An account with this phone number already exists',
-            );
-      }
-      throw err;
+      throw this.mapDuplicate(err);
     }
 
     const otp = await this.otp.issue(phoneNumber, OtpPurpose.PHONE_VERIFICATION, client.ipAddress);
@@ -111,7 +99,72 @@ export class AuthService {
     };
   }
 
+  /** Phone verification switched off: the first registration owns the number and is signed in at once. */
+  private async registerWithoutVerification(
+    dto: RegisterDto,
+    phoneNumber: string,
+    passwordHash: string,
+    client: ClientInfo,
+  ): Promise<RegisterResponseDto> {
+    const alreadyRegistered = () =>
+      new AppException(
+        HttpStatus.CONFLICT,
+        ErrorCode.PHONE_ALREADY_REGISTERED,
+        'An account with this phone number already exists',
+      );
+    if (await this.prisma.user.findUnique({ where: { phoneNumber }, select: { id: true } })) throw alreadyRegistered();
+
+    try {
+      const { user, tokens } = await this.prisma.$transaction(async (tx) => {
+        const role = await tx.role.findUniqueOrThrow({ where: { name: RoleName.USER } });
+        const user = await tx.user.create({
+          data: {
+            phoneNumber,
+            passwordHash,
+            lastLoginAt: new Date(),
+            profile: { create: { fullName: dto.fullName ?? null, email: dto.email?.toLowerCase() ?? null } },
+            roles: { create: { roleId: role.id } },
+          },
+          include: userWithRelations,
+        });
+        const tokens = await this.tokens.issueSession({ id: user.id, roles: this.roleNames(user) }, client, tx);
+        return { user, tokens };
+      });
+      return { userId: user.id, phoneNumber, verificationRequired: false, user: this.toAuthUser(user), tokens };
+    } catch (err) {
+      throw this.mapDuplicate(err);
+    }
+  }
+
+  /** Translates unique-constraint violations on phone number / email into 409 responses. */
+  private mapDuplicate(err: unknown): unknown {
+    if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2002') return err;
+    const target = JSON.stringify(err.meta?.target ?? '');
+    return target.includes('email')
+      ? new AppException(HttpStatus.CONFLICT, ErrorCode.EMAIL_ALREADY_IN_USE, 'This email address is already in use')
+      : new AppException(
+          HttpStatus.CONFLICT,
+          ErrorCode.PHONE_ALREADY_REGISTERED,
+          'An account with this phone number already exists',
+        );
+  }
+
+  private get verificationRequired(): boolean {
+    return this.config.phone.verificationRequired;
+  }
+
+  /** SMS-based flows (phone verification, password reset by code) only exist while verification is on. */
+  private assertSmsFlowsEnabled(): void {
+    if (this.verificationRequired) return;
+    throw new AppException(
+      HttpStatus.FORBIDDEN,
+      ErrorCode.SMS_VERIFICATION_DISABLED,
+      'Verification by SMS is not available. To reset a password, contact support.',
+    );
+  }
+
   async verifyPhone(dto: VerifyPhoneDto, client: ClientInfo): Promise<AuthResponseDto> {
+    this.assertSmsFlowsEnabled();
     const phoneNumber = this.phones.normalize(dto.phoneNumber);
     const user = await this.prisma.user.findUnique({ where: { phoneNumber }, include: userWithRelations });
     if (!user) {
@@ -160,6 +213,7 @@ export class AuthService {
 
   /** Re-sends the phone verification code. The response never reveals whether the number is registered. */
   async resendVerification(dto: PhoneOnlyDto, client: ClientInfo): Promise<OtpRequestedResponseDto> {
+    this.assertSmsFlowsEnabled();
     const phoneNumber = this.phones.normalize(dto.phoneNumber);
     const user = await this.prisma.user.findUnique({ where: { phoneNumber } });
     const eligible = !!user && !user.phoneVerifiedAt && user.status === 'ACTIVE';
@@ -190,7 +244,7 @@ export class AuthService {
     }
 
     await this.loginAttempts.reset(phoneNumber);
-    if (!user.phoneVerifiedAt) {
+    if (this.verificationRequired && !user.phoneVerifiedAt) {
       throw new AppException(
         HttpStatus.FORBIDDEN,
         ErrorCode.PHONE_NOT_VERIFIED,
@@ -222,6 +276,7 @@ export class AuthService {
 
   /** Starts a password reset. The response never reveals whether the number is registered. */
   async forgotPassword(dto: PhoneOnlyDto, client: ClientInfo): Promise<OtpRequestedResponseDto> {
+    this.assertSmsFlowsEnabled();
     const phoneNumber = this.phones.normalize(dto.phoneNumber);
     const user = await this.prisma.user.findUnique({ where: { phoneNumber } });
     const eligible = !!user && !!user.phoneVerifiedAt && user.status !== 'BLOCKED';
@@ -229,6 +284,7 @@ export class AuthService {
   }
 
   async resetPassword(dto: ResetPasswordDto, client: ClientInfo): Promise<MessageResponseDto> {
+    this.assertSmsFlowsEnabled();
     const phoneNumber = this.phones.normalize(dto.phoneNumber);
     const user = await this.prisma.user.findUnique({ where: { phoneNumber } });
     if (!user || !user.phoneVerifiedAt || user.status === 'BLOCKED') {

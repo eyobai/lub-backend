@@ -49,4 +49,17 @@ describe('environment validation', () => {
   it('reports every missing required variable', () => {
     expect(() => validateEnv({})).toThrow(/DATABASE_URL.*REDIS_URL.*JWT_ACCESS_SECRET/s);
   });
+
+  it('defaults to no phone verification and no SMS provider', () => {
+    const withoutProvider: Record<string, string> = { ...base };
+    delete withoutProvider.OTP_PROVIDER;
+    expect(validateEnv(withoutProvider)).toMatchObject({ PHONE_VERIFICATION_REQUIRED: false, OTP_PROVIDER: 'none' });
+    expect(() => validateEnv({ ...withoutProvider, NODE_ENV: 'production' })).not.toThrow();
+  });
+
+  it('refuses phone verification without an SMS provider', () => {
+    expect(() => validateEnv({ ...base, PHONE_VERIFICATION_REQUIRED: 'true', OTP_PROVIDER: 'none' })).toThrow(
+      /PHONE_VERIFICATION_REQUIRED=true needs an OTP_PROVIDER/,
+    );
+  });
 });

@@ -9,26 +9,6 @@ export class OtpInfoDto {
   resendAvailableInSeconds!: number;
 }
 
-export class RegisterResponseDto {
-  @ApiProperty({ example: '6a0f5c0e-6f1f-4b0f-9d0a-0d5c1d7a3b11' })
-  userId!: string;
-
-  @ApiProperty({ example: '+251911234567' })
-  phoneNumber!: string;
-
-  @ApiProperty({ example: true })
-  verificationRequired!: boolean;
-
-  @ApiProperty({
-    example: 'q0J8m1mJ0V8n3zq5yQ0b6Jr5mF4oT2c1x9KpLw7HdEs',
-    description: 'Send this back to POST /auth/verify-phone together with the SMS code',
-  })
-  verificationToken!: string;
-
-  @ApiProperty({ type: OtpInfoDto })
-  otp!: OtpInfoDto;
-}
-
 export class OtpRequestedResponseDto {
   @ApiProperty({ example: 'If the phone number is eligible, a verification code has been sent.' })
   message!: string;
@@ -91,4 +71,35 @@ export class AuthResponseDto {
 
   @ApiProperty({ type: TokenPairDto })
   tokens!: TokenPairDto;
+}
+
+export class RegisterResponseDto {
+  @ApiProperty({ example: '6a0f5c0e-6f1f-4b0f-9d0a-0d5c1d7a3b11' })
+  userId!: string;
+
+  @ApiProperty({ example: '+251911234567' })
+  phoneNumber!: string;
+
+  @ApiProperty({
+    example: false,
+    description:
+      'false: the account is ready and `user` + `tokens` are returned. ' +
+      'true: confirm the SMS code with POST /auth/verify-phone using `verificationToken`.',
+  })
+  verificationRequired!: boolean;
+
+  @ApiPropertyOptional({ type: AuthUserDto, description: 'Present when verificationRequired is false' })
+  user?: AuthUserDto;
+
+  @ApiPropertyOptional({ type: TokenPairDto, description: 'Present when verificationRequired is false' })
+  tokens?: TokenPairDto;
+
+  @ApiPropertyOptional({
+    example: 'q0J8m1mJ0V8n3zq5yQ0b6Jr5mF4oT2c1x9KpLw7HdEs',
+    description: 'Present when verificationRequired is true. Send it to POST /auth/verify-phone with the SMS code.',
+  })
+  verificationToken?: string;
+
+  @ApiPropertyOptional({ type: OtpInfoDto, description: 'Present when verificationRequired is true' })
+  otp?: OtpInfoDto;
 }

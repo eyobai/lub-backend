@@ -27,7 +27,7 @@ export interface AppConfig {
     resendCooldownSeconds: number;
     maxPerHour: number;
   };
-  phone: { allowedCountries: CountryCode[]; defaultCountry: CountryCode };
+  phone: { allowedCountries: CountryCode[]; defaultCountry: CountryCode; verificationRequired: boolean };
   throttle: { ttlSeconds: number; limit: number; authLimit: number };
 }
 
@@ -66,7 +66,7 @@ export function configuration(): { app: AppConfig } {
         lockoutSeconds: num('LOGIN_LOCKOUT_SECONDS', 900),
       },
       otp: {
-        provider: e.OTP_PROVIDER as string,
+        provider: e.OTP_PROVIDER ?? 'none',
         hmacSecret: e.OTP_HMAC_SECRET as string,
         length: num('OTP_LENGTH', 6),
         ttlSeconds: num('OTP_TTL_SECONDS', 300),
@@ -77,6 +77,7 @@ export function configuration(): { app: AppConfig } {
       phone: {
         allowedCountries: (e.PHONE_ALLOWED_COUNTRIES ?? 'ET').split(',') as CountryCode[],
         defaultCountry: (e.PHONE_DEFAULT_COUNTRY ?? 'ET') as CountryCode,
+        verificationRequired: bool('PHONE_VERIFICATION_REQUIRED', false),
       },
       throttle: {
         ttlSeconds: num('THROTTLE_TTL_SECONDS', 60),

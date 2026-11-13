@@ -53,8 +53,9 @@ export class AuthController {
   @ApiOperation({
     summary: 'Register with a phone number and password',
     description:
-      'Creates an unverified account and sends a verification code by SMS. ' +
-      'Registering again with a number that was never verified replaces the pending registration.',
+      'Default (PHONE_VERIFICATION_REQUIRED=false): creates the account and signs the user in; no SMS is sent. ' +
+      'With phone verification on: creates an unverified account and sends a code by SMS; registering again ' +
+      'with a number that was never verified replaces the pending registration.',
   })
   @ApiCreatedResponse({ type: RegisterResponseDto })
   @ApiBadRequestResponse(error('VALIDATION_FAILED, INVALID_PHONE_NUMBER'))

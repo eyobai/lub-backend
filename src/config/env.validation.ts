@@ -49,8 +49,10 @@ export const envSchema = Joi.object({
   LOGIN_FAILURE_WINDOW_SECONDS: Joi.number().integer().min(1).default(900),
   LOGIN_LOCKOUT_SECONDS: Joi.number().integer().min(1).default(900),
 
+  // false: accounts are usable right after registration and no SMS is ever sent.
+  PHONE_VERIFICATION_REQUIRED: Joi.boolean().default(false),
   OTP_PROVIDER: Joi.string()
-    .required()
+    .default('none')
     .when('NODE_ENV', {
       is: 'production',
       then: Joi.string()
@@ -81,5 +83,9 @@ export function validateEnv(config: Record<string, unknown>): Record<string, unk
   if (result.error) {
     throw new Error(`Invalid environment configuration: ${result.error.details.map((d) => d.message).join('; ')}`);
   }
-  return result.value as Record<string, unknown>;
+  const value = result.value as Record<string, unknown>;
+  if (value.PHONE_VERIFICATION_REQUIRED === true && value.OTP_PROVIDER === 'none') {
+    throw new Error('Invalid environment configuration: PHONE_VERIFICATION_REQUIRED=true needs an OTP_PROVIDER');
+  }
+  return value;
 }

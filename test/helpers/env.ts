@@ -10,6 +10,7 @@ const defaults: Record<string, string> = {
   JWT_ACCESS_TTL_SECONDS: '900',
   JWT_REFRESH_TTL_DAYS: '30',
   JWT_ISSUER: 'lub-auction-test',
+  PHONE_VERIFICATION_REQUIRED: 'true',
   OTP_PROVIDER: 'console',
   OTP_HMAC_SECRET: 'test-otp-hmac-secret-test-otp-hmac-secret-0003',
   OTP_LENGTH: '6',
