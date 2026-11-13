@@ -19,6 +19,17 @@ import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
 import { PhoneModule } from './modules/phone/phone.module';
 
+/** Human-readable logs in development, when the dev-only pretty printer is installed; JSON otherwise. */
+function prettyLogs(config: AppConfig): boolean {
+  if (config.env !== 'development') return false;
+  try {
+    require.resolve('pino-pretty');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 @Module({
   imports: [
     AppConfigModule,
@@ -43,8 +54,7 @@ import { PhoneModule } from './modules/phone/phone.module';
             res: (res: { statusCode: number }) => ({ statusCode: res.statusCode }),
           },
           autoLogging: { ignore: (req: IncomingMessage) => !!req.url?.includes('/health') },
-          transport:
-            config.env === 'development' ? { target: 'pino-pretty', options: { singleLine: true } } : undefined,
+          transport: prettyLogs(config) ? { target: 'pino-pretty', options: { singleLine: true } } : undefined,
         },
       }),
     }),
