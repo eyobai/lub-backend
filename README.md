@@ -21,8 +21,10 @@ npm run start:dev
 - Swagger UI: http://localhost:3000/docs (OpenAPI JSON at `/docs/openapi.json`)
 - Health: `GET /health`, `GET /health/ready`
 
-With `OTP_PROVIDER=console`, verification codes are written to the application log. This
-provider is rejected when `NODE_ENV=production`.
+By default (`PHONE_VERIFICATION_REQUIRED=false`) users register with a phone number and password
+only: no SMS is sent and no SMS provider is needed. Setting it to `true` turns on SMS codes for
+registration and password reset and needs an `OTP_PROVIDER`; the `console` provider (codes written
+to the log) is for development and is rejected when `NODE_ENV=production`.
 
 To run the API in Docker as well: `docker compose --profile app up -d --build`.
 
@@ -46,14 +48,36 @@ All under `/api/v1/auth`.
 
 | Method | Path                   | Auth   | Purpose                                             |
 | ------ | ---------------------- | ------ | --------------------------------------------------- |
-| POST   | `/register`            | Public | Create account, send verification code              |
-| POST   | `/verify-phone`        | Public | Confirm code, sign in                               |
-| POST   | `/resend-verification` | Public | Send a new verification code                        |
+| POST   | `/register`            | Public | Create account and sign in                          |
+| POST   | `/verify-phone`        | Public | Confirm SMS code, sign in (SMS mode only)           |
+| POST   | `/resend-verification` | Public | Send a new verification code (SMS mode only)        |
 | POST   | `/login`               | Public | Phone + password sign-in                            |
 | POST   | `/refresh`             | Public | Rotate refresh token, get a new pair                |
 | POST   | `/logout`              | Public | Revoke the session of the given refresh token       |
 | POST   | `/logout-all`          | Bearer | Revoke all sessions                                 |
-| POST   | `/forgot-password`     | Public | Send a password-reset code                          |
-| POST   | `/reset-password`      | Public | Set a new password with the code                    |
+| POST   | `/forgot-password`     | Public | Send a password-reset code (SMS mode only)          |
+| POST   | `/reset-password`      | Public | Set a new password with the code (SMS mode only)    |
 | POST   | `/change-password`     | Bearer | Change password, replace all sessions               |
 | GET    | `/me`                  | Bearer | Current user                                        |
+
+"SMS mode only" endpoints answer `403 SMS_VERIFICATION_DISABLED` while
+`PHONE_VERIFICATION_REQUIRED=false`.
+
+## Wallet endpoints
+
+All amounts are integer minor units (santim) sent as strings, with a formatted copy for display.
+
+| Method | Path                                          | Auth                    | Purpose                                   |
+| ------ | --------------------------------------------- | ----------------------- | ----------------------------------------- |
+| GET    | `/wallet`                                     | Bearer                  | My balance (wallet created on first use)  |
+| GET    | `/wallet/transactions`                        | Bearer                  | My history, newest first, cursor paging   |
+| GET    | `/wallet/transactions/:id`                    | Bearer                  | One of my transactions                    |
+| GET    | `/admin/wallets/:userId`                      | SUPPORT, FINANCE, ADMIN | A user's balance                          |
+| GET    | `/admin/wallets/:userId/transactions`         | SUPPORT, FINANCE, ADMIN | A user's history                          |
+| POST   | `/admin/wallets/:userId/adjustments`          | FINANCE                 | Manual credit/debit (`Idempotency-Key`)   |
+| POST   | `/admin/wallet-transactions/:id/reverse`      | FINANCE                 | Reverse an adjustment (`Idempotency-Key`) |
+| POST   | `/admin/wallets/:userId/freeze`, `/unfreeze`  | FINANCE                 | Block / allow spending                    |
+| GET    | `/admin/ledger/reconciliation`                | FINANCE                 | Prove cached balances from ledger lines   |
+
+`SUPER_ADMIN` passes every role check. There is no user-facing deposit endpoint yet: deposits
+arrive with the payments module. Until then a FINANCE user funds test wallets with an adjustment.

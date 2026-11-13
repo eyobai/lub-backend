@@ -69,6 +69,9 @@ src/
     health/                              liveness and readiness probes
     phone/                               phone parsing and E.164 normalization
     otp/                                 OTP issuing/verification + SMS sender abstraction
+    ledger/                              double-entry posting, reversal, reconciliation
+    wallet/                              wallet balance/history, admin adjustments and freezing
+    audit/                               audit-log writer used inside business transactions
     auth/                                registration, login, tokens, password recovery
   scripts/seed-admin.ts                  bootstrap SUPER_ADMIN
 prisma/schema.prisma, prisma/migrations  schema and SQL migrations
@@ -91,6 +94,21 @@ Planned modules, one per phase: `wallet` (ledger), `payments`, `products`, `auct
   least one letter and one digit.
 
 ### Registration and phone verification
+
+`PHONE_VERIFICATION_REQUIRED` selects one of two modes.
+
+**Off (default): phone number + password only.** `POST /auth/register` creates the account and
+returns the user and tokens at once. No SMS is sent and no SMS provider is configured
+(`OTP_PROVIDER=none`). Consequences that follow from not proving who owns a number:
+
+- The first registration owns the number; a second one gets `409 PHONE_ALREADY_REGISTERED`.
+- `verify-phone`, `resend-verification`, `forgot-password` and `reset-password` answer
+  `403 SMS_VERIFICATION_DISABLED`. A forgotten password must be reset by staff (admin phase);
+  a signed-in user can still use `change-password`.
+- `phoneVerified` stays `false` on these accounts, so verification can be required later for
+  sensitive actions (e.g. withdrawals) without a data migration.
+
+**On: SMS verification.** The startup check refuses this mode without an `OTP_PROVIDER`.
 
 1. `POST /auth/register` creates the user as unverified, sends a 6-digit code by SMS and
    returns a `verificationToken`.
@@ -180,6 +198,37 @@ All tables exist from the first migration, so later phases add code rather than 
   entries, and constrained to never go negative. Each entry stores the balance after it, so a
   balance can be re-derived and reconciled from the entries alone.
 
+How it runs (`src/modules/ledger`, `src/modules/wallet`):
+
+- `LedgerService.post` is the only code that moves money. In one database transaction it
+  validates that the lines balance, row-locks the affected accounts in id order (so concurrent
+  postings queue instead of deadlocking or overdrawing), checks the resulting balances, writes
+  the journal and its lines, and updates the cached balances. It accepts the caller's
+  transaction, so a bid and its fee will commit or roll back together.
+- Each wallet has two accounts: `USER_WALLET` (spendable) and `USER_WALLET_HOLD` (reserved for
+  withdrawals). Wallets and system accounts are created on first use with
+  `INSERT … ON CONFLICT DO NOTHING`.
+- Journals: deposit = debit payment clearing / credit wallet; bid fee = debit wallet / credit
+  platform revenue; refund = the reverse; manual adjustment = wallet against `ADJUSTMENTS`.
+- Idempotency: a journal may carry a globally unique key. Same-key requests are serialized with
+  a transaction-scoped advisory lock; a repeat returns the first journal, and the same key with
+  different content is rejected (`IDEMPOTENCY_KEY_REUSED`).
+- Reversal posts a mirror-image journal linked by `reverses_id` (unique, so once only) and
+  flips the original to `REVERSED`. It fails if the money has already been spent.
+- A frozen wallet still receives money but cannot be debited by user activity.
+- Ledger lines have a `sequence` assigned while the account is locked; history pages by it.
+- `ReconciliationService` recomputes every balance from the lines in one repeatable-read
+  snapshot and reports mismatches, unbalanced journals, negative balances and a non-zero trial
+  balance. Exposed at `GET /admin/ledger/reconciliation`.
+- Manual adjustments, reversals and freezes need the `FINANCE` role, an `Idempotency-Key`
+  header (money movements), a reason, and write an `audit_logs` row in the same transaction.
+  Staff cannot adjust their own wallet.
+- Money is `bigint` end to end and is serialized as a string; nothing passes through a float.
+
+Known limit: every bid fee locks the single platform-revenue row for its currency, which
+serializes fee postings platform-wide. Transactions are short, so this is fine at launch scale;
+if it becomes a bottleneck the revenue account can be sharded or its cached balance dropped.
+
 ### Bids and results
 
 - `bid_submissions` is one paid request (one or many amounts, one fee total, one ledger
@@ -224,14 +273,19 @@ See `.env.example` for the full list.
 
 ## 8. Testing
 
-- Unit tests (`npm test`): environment validation, OTP sender selection, phone parsing, roles guard.
+- Unit tests (`npm test`): environment validation, OTP sender selection, phone parsing, roles guard,
+  money formatting, ledger posting validation.
 - Integration tests (`npm run test:e2e`): boot the real application against PostgreSQL and
   Redis (database `lub_test`, Redis DB 1) and drive it over HTTP. Only SMS delivery is
   replaced, by a sender that captures messages so tests read the code the way a user would.
   The test setup refuses to run against a database whose name does not contain `test`.
 
+  Wallet tests cover concurrent spending, idempotent retries, rollback, immutability triggers,
+  reversal, freezing, reconciliation and role checks on every admin route.
+
 ## 9. Not built yet / decisions needed
 
-- A real SMS provider for OTP delivery. Production cannot start without one.
-- Wallet, payments, products, auctions, bidding, winner calculation, notifications, admin APIs.
+- Payments (user deposits, provider callbacks), withdrawals, products, auctions, bidding,
+  winner calculation, notifications, and the rest of the admin APIs.
+- Staff-driven password reset: needed because SMS reset is off by default.
 - Real-money payments and public paid auctions must wait for legal and regulatory review.

@@ -44,6 +44,8 @@ export function buildOpenApiDocument(app: INestApplication) {
     .setVersion('0.1.0')
     .addBearerAuth()
     .addTag('Authentication', 'Registration, phone verification, sign-in, tokens and password recovery')
+    .addTag('Wallet', 'Balance and transaction history of the signed-in user')
+    .addTag('Admin: Wallets', 'Back-office wallet views, manual adjustments, freezing and ledger reconciliation')
     .addTag('Health', 'Liveness and readiness probes')
     .build();
   return SwaggerModule.createDocument(app, builder);

@@ -71,6 +71,7 @@ export const envSchema = Joi.object({
   PHONE_ALLOWED_COUNTRIES: Joi.string()
     .pattern(/^[A-Z]{2}(,[A-Z]{2})*$/)
     .default('ET'),
+  DEFAULT_CURRENCY: Joi.string().length(3).uppercase().default('ETB'),
   PHONE_DEFAULT_COUNTRY: Joi.string().length(2).uppercase().default('ET'),
 
   THROTTLE_TTL_SECONDS: Joi.number().integer().min(1).default(60),

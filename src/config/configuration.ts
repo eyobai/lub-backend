@@ -10,6 +10,8 @@ export interface AppConfig {
   trustProxy: boolean;
   swaggerEnabled: boolean;
   redisUrl: string;
+  /** Currency used when a request does not name one. Must exist in the `currencies` table. */
+  defaultCurrency: string;
   jwt: {
     accessSecret: string;
     refreshSecret: string;
@@ -53,6 +55,7 @@ export function configuration(): { app: AppConfig } {
       trustProxy: bool('TRUST_PROXY', false),
       swaggerEnabled: bool('SWAGGER_ENABLED', env !== 'production'),
       redisUrl: e.REDIS_URL as string,
+      defaultCurrency: e.DEFAULT_CURRENCY ?? 'ETB',
       jwt: {
         accessSecret: e.JWT_ACCESS_SECRET as string,
         refreshSecret: e.JWT_REFRESH_SECRET as string,

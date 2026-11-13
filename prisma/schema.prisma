@@ -205,7 +205,7 @@ model Wallet {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user                User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
-  ledgerAccount       LedgerAccount?
+  ledgerAccounts      LedgerAccount[]
   paymentTransactions PaymentTransaction[]
   withdrawalRequests  WithdrawalRequest[]
   currencyRef         Currency             @relation(fields: [currency], references: [code], onDelete: Restrict)
@@ -230,7 +230,7 @@ model LedgerAccount {
   code          String            @unique @db.VarChar(100) // e.g. "PLATFORM_REVENUE:ETB", "WALLET:<walletId>"
   type          LedgerAccountType
   currency      String            @db.Char(3)
-  walletId      String?           @unique @map("wallet_id") @db.Uuid
+  walletId      String?           @map("wallet_id") @db.Uuid
   allowNegative Boolean           @default(false) @map("allow_negative")
   balanceMinor  BigInt            @default(0) @map("balance_minor")
   version       Int               @default(0)
@@ -241,6 +241,7 @@ model LedgerAccount {
   entries     LedgerEntry[]
   currencyRef Currency      @relation(fields: [currency], references: [code], onDelete: Restrict)
 
+  @@unique([walletId, type])
   @@index([type, currency])
   @@map("ledger_accounts")
 }
@@ -295,6 +296,8 @@ enum EntryDirection {
 /// Immutable ledger line (UPDATE/DELETE blocked by trigger).
 model LedgerEntry {
   id                String         @id @default(uuid()) @db.Uuid
+  /// Insertion order. Assigned while the account row is locked, so per account it follows the balance.
+  sequence          BigInt         @unique @default(autoincrement())
   transactionId     String         @map("transaction_id") @db.Uuid
   accountId         String         @map("account_id") @db.Uuid
   direction         EntryDirection
@@ -305,7 +308,7 @@ model LedgerEntry {
   transaction WalletTransaction @relation(fields: [transactionId], references: [id], onDelete: Restrict)
   account     LedgerAccount     @relation(fields: [accountId], references: [id], onDelete: Restrict)
 
-  @@index([accountId, createdAt])
+  @@index([accountId, sequence])
   @@index([transactionId])
   @@map("ledger_entries")
 }
