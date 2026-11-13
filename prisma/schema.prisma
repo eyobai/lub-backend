@@ -1,0 +1,790 @@
+// LUB Auction Platform — database schema
+// Money is stored as BigInt minor units (e.g. santim for ETB) together with an ISO-4217 currency code.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────── Identity & access ───────────────────────────────
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  BLOCKED
+}
+
+enum RoleName {
+  USER
+  SUPPORT
+  FINANCE
+  ADMIN
+  SUPER_ADMIN
+}
+
+model User {
+  id                String        @id @default(uuid()) @db.Uuid
+  phoneNumber       String        @unique @map("phone_number") @db.VarChar(20) // E.164
+  passwordHash      String        @map("password_hash")
+  phoneVerifiedAt   DateTime?     @map("phone_verified_at") @db.Timestamptz(3)
+  status            AccountStatus @default(ACTIVE)
+  statusReason      String?       @map("status_reason")
+  passwordChangedAt DateTime?     @map("password_changed_at") @db.Timestamptz(3)
+  lastLoginAt       DateTime?     @map("last_login_at") @db.Timestamptz(3)
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  profile                   UserProfile?
+  roles                     UserRole[]           @relation("UserRoles")
+  rolesGranted              UserRole[]           @relation("RoleGrantedBy")
+  refreshTokens             RefreshToken[]
+  wallets                   Wallet[]
+  bids                      Bid[]
+  bidSubmissions            BidSubmission[]
+  paymentTransactions       PaymentTransaction[]
+  withdrawalRequests        WithdrawalRequest[]  @relation("WithdrawalRequester")
+  withdrawalsReviewed       WithdrawalRequest[]  @relation("WithdrawalReviewer")
+  wins                      Winner[]             @relation("WinnerUser")
+  winsVerified              Winner[]             @relation("WinnerVerifier")
+  notifications             Notification[]
+  auditLogs                 AuditLog[]
+  securityEvents            SecurityEvent[]
+  idempotencyRecords        IdempotencyRecord[]
+  auctionsCreated           Auction[]            @relation("AuctionCreator")
+  productsCreated           Product[]            @relation("ProductCreator")
+  walletTransactionsCreated WalletTransaction[]  @relation("WalletTxCreator")
+  prizeDeliveryEvents       PrizeDeliveryEvent[]
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("users")
+}
+
+model UserProfile {
+  userId      String   @id @map("user_id") @db.Uuid
+  fullName    String?  @map("full_name") @db.VarChar(150)
+  email       String?  @unique @db.VarChar(254)
+  countryCode String   @default("ET") @map("country_code") @db.Char(2)
+  locale      String   @default("en") @db.VarChar(10)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+model Role {
+  id          Int        @id @default(autoincrement())
+  name        RoleName   @unique
+  description String?
+  users       UserRole[]
+
+  @@map("roles")
+}
+
+model UserRole {
+  userId      String   @map("user_id") @db.Uuid
+  roleId      Int      @map("role_id")
+  grantedById String?  @map("granted_by_id") @db.Uuid
+  grantedAt   DateTime @default(now()) @map("granted_at") @db.Timestamptz(3)
+
+  user      User  @relation("UserRoles", fields: [userId], references: [id], onDelete: Cascade)
+  role      Role  @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  grantedBy User? @relation("RoleGrantedBy", fields: [grantedById], references: [id], onDelete: SetNull)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model RefreshToken {
+  id            String    @id @db.Uuid // = JWT "jti"
+  userId        String    @map("user_id") @db.Uuid
+  familyId      String    @map("family_id") @db.Uuid // one family per login session; rotated tokens share it
+  tokenHash     String    @unique @map("token_hash") @db.Char(64) // sha256 of the signed token
+  expiresAt     DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt     DateTime? @map("revoked_at") @db.Timestamptz(3)
+  revokedReason String?   @map("revoked_reason") @db.VarChar(50)
+  replacedById  String?   @unique @map("replaced_by_id") @db.Uuid
+  userAgent     String?   @map("user_agent") @db.VarChar(512)
+  ipAddress     String?   @map("ip_address") @db.VarChar(64)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replacedBy RefreshToken? @relation("TokenRotation", fields: [replacedById], references: [id], onDelete: SetNull)
+  replaces   RefreshToken? @relation("TokenRotation")
+
+  @@index([userId])
+  @@index([familyId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+enum OtpPurpose {
+  PHONE_VERIFICATION
+  PASSWORD_RESET
+}
+
+model OtpVerification {
+  id               String     @id @default(uuid()) @db.Uuid
+  phoneNumber      String     @map("phone_number") @db.VarChar(20)
+  purpose          OtpPurpose
+  codeHash         String     @map("code_hash") @db.Char(64) // HMAC-SHA256(code)
+  attempts         Int        @default(0)
+  maxAttempts      Int        @map("max_attempts")
+  expiresAt        DateTime   @map("expires_at") @db.Timestamptz(3)
+  consumedAt       DateTime?  @map("consumed_at") @db.Timestamptz(3)
+  invalidatedAt    DateTime?  @map("invalidated_at") @db.Timestamptz(3)
+  deliveryProvider String?    @map("delivery_provider") @db.VarChar(50)
+  ipAddress        String?    @map("ip_address") @db.VarChar(64)
+  createdAt        DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([phoneNumber, purpose, createdAt])
+  @@map("otp_verifications")
+}
+
+enum SecurityEventType {
+  LOGIN_SUCCESS
+  LOGIN_FAILED
+  ACCOUNT_LOCKED
+  REFRESH_TOKEN_REUSE
+  PASSWORD_RESET
+  PASSWORD_CHANGED
+  OTP_VERIFICATION_FAILED
+  SUSPICIOUS_BIDDING
+  SUSPICIOUS_PAYMENT
+}
+
+model SecurityEvent {
+  id          String            @id @default(uuid()) @db.Uuid
+  userId      String?           @map("user_id") @db.Uuid
+  phoneNumber String?           @map("phone_number") @db.VarChar(20)
+  type        SecurityEventType
+  ipAddress   String?           @map("ip_address") @db.VarChar(64)
+  userAgent   String?           @map("user_agent") @db.VarChar(512)
+  metadata    Json?
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([type, createdAt])
+  @@map("security_events")
+}
+
+// ─────────────────────────────── Wallet & ledger ───────────────────────────────
+
+model Currency {
+  code       String  @id @db.Char(3) // ISO-4217
+  name       String
+  minorUnits Int     @map("minor_units") // e.g. 2 for ETB (100 santim = 1 birr)
+  isActive   Boolean @default(true) @map("is_active")
+
+  wallets             Wallet[]
+  ledgerAccounts      LedgerAccount[]
+  walletTransactions  WalletTransaction[]
+  paymentTransactions PaymentTransaction[]
+  withdrawalRequests  WithdrawalRequest[]
+  products            Product[]
+  auctions            Auction[]
+  winners             Winner[]
+
+  @@map("currencies")
+}
+
+model Wallet {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  currency  String   @db.Char(3)
+  isFrozen  Boolean  @default(false) @map("is_frozen")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  ledgerAccount       LedgerAccount?
+  paymentTransactions PaymentTransaction[]
+  withdrawalRequests  WithdrawalRequest[]
+  currencyRef         Currency             @relation(fields: [currency], references: [code], onDelete: Restrict)
+
+  @@unique([userId, currency])
+  @@map("wallets")
+}
+
+enum LedgerAccountType {
+  USER_WALLET // liability: money the platform owes the user
+  USER_WALLET_HOLD // liability: funds reserved for pending withdrawals
+  PLATFORM_REVENUE // income from bid fees
+  PAYMENT_CLEARING // asset: money held at / receivable from payment providers
+  WITHDRAWAL_CLEARING // money in flight to users
+  ADJUSTMENTS // manual, audited corrections
+}
+
+/// Double-entry ledger account. `balanceMinor` is a cached projection of ledger_entries,
+/// updated in the same DB transaction and verifiable via reconciliation.
+model LedgerAccount {
+  id            String            @id @default(uuid()) @db.Uuid
+  code          String            @unique @db.VarChar(100) // e.g. "PLATFORM_REVENUE:ETB", "WALLET:<walletId>"
+  type          LedgerAccountType
+  currency      String            @db.Char(3)
+  walletId      String?           @unique @map("wallet_id") @db.Uuid
+  allowNegative Boolean           @default(false) @map("allow_negative")
+  balanceMinor  BigInt            @default(0) @map("balance_minor")
+  version       Int               @default(0)
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  wallet      Wallet?       @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  entries     LedgerEntry[]
+  currencyRef Currency      @relation(fields: [currency], references: [code], onDelete: Restrict)
+
+  @@index([type, currency])
+  @@map("ledger_accounts")
+}
+
+enum WalletTransactionType {
+  DEPOSIT
+  BID_FEE
+  REFUND
+  WITHDRAWAL_HOLD
+  WITHDRAWAL_RELEASE
+  WITHDRAWAL_PAYOUT
+  ADJUSTMENT
+}
+
+enum WalletTransactionStatus {
+  POSTED
+  REVERSED
+}
+
+/// Journal header. Every money movement has exactly one; its entries must sum to zero (debits = credits).
+model WalletTransaction {
+  id             String                  @id @default(uuid()) @db.Uuid
+  reference      String                  @unique @db.VarChar(64) // human-readable, e.g. "TX-20261113-XXXX"
+  type           WalletTransactionType
+  status         WalletTransactionStatus @default(POSTED)
+  currency       String                  @db.Char(3)
+  amountMinor    BigInt                  @map("amount_minor")
+  description    String?
+  metadata       Json?
+  idempotencyKey String?                 @unique @map("idempotency_key") @db.VarChar(128)
+  reversesId     String?                 @unique @map("reverses_id") @db.Uuid
+  createdById    String?                 @map("created_by_id") @db.Uuid
+  createdAt      DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  entries            LedgerEntry[]
+  reverses           WalletTransaction?  @relation("Reversal", fields: [reversesId], references: [id], onDelete: Restrict)
+  reversedBy         WalletTransaction?  @relation("Reversal")
+  createdBy          User?               @relation("WalletTxCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  paymentTransaction PaymentTransaction?
+  bidSubmission      BidSubmission?
+  currencyRef        Currency            @relation(fields: [currency], references: [code], onDelete: Restrict)
+
+  @@index([type, createdAt])
+  @@map("wallet_transactions")
+}
+
+enum EntryDirection {
+  DEBIT
+  CREDIT
+}
+
+/// Immutable ledger line (UPDATE/DELETE blocked by trigger).
+model LedgerEntry {
+  id                String         @id @default(uuid()) @db.Uuid
+  transactionId     String         @map("transaction_id") @db.Uuid
+  accountId         String         @map("account_id") @db.Uuid
+  direction         EntryDirection
+  amountMinor       BigInt         @map("amount_minor")
+  balanceAfterMinor BigInt         @map("balance_after_minor")
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  transaction WalletTransaction @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+  account     LedgerAccount     @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@index([accountId, createdAt])
+  @@index([transactionId])
+  @@map("ledger_entries")
+}
+
+enum PaymentDirection {
+  DEPOSIT
+  WITHDRAWAL
+}
+
+enum PaymentStatus {
+  INITIATED
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  EXPIRED
+}
+
+model PaymentTransaction {
+  id                  String           @id @default(uuid()) @db.Uuid
+  userId              String           @map("user_id") @db.Uuid
+  walletId            String           @map("wallet_id") @db.Uuid
+  direction           PaymentDirection
+  status              PaymentStatus    @default(INITIATED)
+  provider            String           @db.VarChar(50) // adapter key, e.g. "telebirr", "chapa"
+  providerReference   String?          @map("provider_reference") @db.VarChar(128)
+  merchantReference   String           @unique @map("merchant_reference") @db.VarChar(64) // our reference sent to provider
+  amountMinor         BigInt           @map("amount_minor")
+  currency            String           @db.Char(3)
+  idempotencyKey      String           @map("idempotency_key") @db.VarChar(128)
+  walletTransactionId String?          @unique @map("wallet_transaction_id") @db.Uuid
+  failureReason       String?          @map("failure_reason")
+  providerPayload     Json?            @map("provider_payload")
+  verifiedAt          DateTime?        @map("verified_at") @db.Timestamptz(3)
+  createdAt           DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user              User                   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  wallet            Wallet                 @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  walletTransaction WalletTransaction?     @relation(fields: [walletTransactionId], references: [id], onDelete: Restrict)
+  events            PaymentProviderEvent[]
+  withdrawalRequest WithdrawalRequest?
+  currencyRef       Currency               @relation(fields: [currency], references: [code], onDelete: Restrict)
+
+  @@unique([provider, providerReference])
+  @@unique([userId, idempotencyKey])
+  @@index([status, createdAt])
+  @@map("payment_transactions")
+}
+
+/// Raw provider callbacks/webhooks, deduplicated per provider event id, used for reconciliation.
+model PaymentProviderEvent {
+  id                   String    @id @default(uuid()) @db.Uuid
+  provider             String    @db.VarChar(50)
+  providerEventId      String    @map("provider_event_id") @db.VarChar(128)
+  paymentTransactionId String?   @map("payment_transaction_id") @db.Uuid
+  signatureValid       Boolean   @map("signature_valid")
+  payload              Json
+  processedAt          DateTime? @map("processed_at") @db.Timestamptz(3)
+  processingError      String?   @map("processing_error")
+  receivedAt           DateTime  @default(now()) @map("received_at") @db.Timestamptz(3)
+
+  paymentTransaction PaymentTransaction? @relation(fields: [paymentTransactionId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, providerEventId])
+  @@map("payment_provider_events")
+}
+
+enum WithdrawalStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  PROCESSING
+  PAID
+  FAILED
+  CANCELLED
+}
+
+model WithdrawalRequest {
+  id                   String           @id @default(uuid()) @db.Uuid
+  userId               String           @map("user_id") @db.Uuid
+  walletId             String           @map("wallet_id") @db.Uuid
+  amountMinor          BigInt           @map("amount_minor")
+  currency             String           @db.Char(3)
+  status               WithdrawalStatus @default(REQUESTED)
+  destination          Json // provider + account details (masked where shown)
+  reviewedById         String?          @map("reviewed_by_id") @db.Uuid
+  reviewedAt           DateTime?        @map("reviewed_at") @db.Timestamptz(3)
+  reviewNote           String?          @map("review_note")
+  idempotencyKey       String           @map("idempotency_key") @db.VarChar(128)
+  paymentTransactionId String?          @unique @map("payment_transaction_id") @db.Uuid
+  createdAt            DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user               User                @relation("WithdrawalRequester", fields: [userId], references: [id], onDelete: Restrict)
+  wallet             Wallet              @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  reviewedBy         User?               @relation("WithdrawalReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  paymentTransaction PaymentTransaction? @relation(fields: [paymentTransactionId], references: [id], onDelete: Restrict)
+  currencyRef        Currency            @relation(fields: [currency], references: [code], onDelete: Restrict)
+
+  @@unique([userId, idempotencyKey])
+  @@index([status, createdAt])
+  @@map("withdrawal_requests")
+}
+
+// ─────────────────────────────── Catalogue & auctions ───────────────────────────────
+
+enum ProductStatus {
+  AVAILABLE
+  RESERVED
+  UNAVAILABLE
+  ARCHIVED
+}
+
+model Product {
+  id               String        @id @default(uuid()) @db.Uuid
+  name             String        @db.VarChar(200)
+  description      String?
+  brand            String?       @db.VarChar(100)
+  model            String?       @db.VarChar(100)
+  marketValueMinor BigInt        @map("market_value_minor")
+  currency         String        @db.Char(3)
+  specifications   Json?
+  status           ProductStatus @default(AVAILABLE)
+  createdById      String?       @map("created_by_id") @db.Uuid
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  images      ProductImage[]
+  auctions    Auction[]
+  createdBy   User?          @relation("ProductCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  currencyRef Currency       @relation(fields: [currency], references: [code], onDelete: Restrict)
+
+  @@index([status])
+  @@map("products")
+}
+
+model ProductImage {
+  id        String   @id @default(uuid()) @db.Uuid
+  productId String   @map("product_id") @db.Uuid
+  url       String   @db.VarChar(2048)
+  altText   String?  @map("alt_text") @db.VarChar(255)
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, sortOrder])
+  @@map("product_images")
+}
+
+enum AuctionStatus {
+  DRAFT
+  SCHEDULED
+  ACTIVE
+  CLOSING
+  COMPLETED
+  CANCELLED
+}
+
+enum DuplicateBidPolicy {
+  REJECT_SAME_USER_SAME_AMOUNT
+  ALLOW_SAME_USER_SAME_AMOUNT
+}
+
+/// Outcome to apply when no amount was bid exactly once. Must be chosen explicitly per auction
+/// before it can be finalized; NULL means "not yet decided" and blocks finalization.
+enum NoUniqueBidPolicy {
+  NO_WINNER
+  REFUND_BID_FEES
+  EXTEND_AUCTION
+}
+
+model Auction {
+  id                 String             @id @default(uuid()) @db.Uuid
+  productId          String             @map("product_id") @db.Uuid
+  title              String             @db.VarChar(200)
+  description        String?
+  currency           String             @db.Char(3)
+  bidFeeMinor        BigInt             @map("bid_fee_minor")
+  minBidMinor        BigInt             @map("min_bid_minor")
+  maxBidMinor        BigInt             @map("max_bid_minor")
+  bidStepMinor       BigInt             @default(1) @map("bid_step_minor") // allowed amount granularity
+  maxBidsPerUser     Int?               @map("max_bids_per_user")
+  maxBidsPerRequest  Int                @default(50) @map("max_bids_per_request")
+  opensAt            DateTime           @map("opens_at") @db.Timestamptz(3)
+  closesAt           DateTime           @map("closes_at") @db.Timestamptz(3)
+  status             AuctionStatus      @default(DRAFT)
+  duplicateBidPolicy DuplicateBidPolicy @default(REJECT_SAME_USER_SAME_AMOUNT) @map("duplicate_bid_policy")
+  noUniqueBidPolicy  NoUniqueBidPolicy? @map("no_unique_bid_policy")
+  totalBidCount      Int                @default(0) @map("total_bid_count")
+  version            Int                @default(0)
+  createdById        String?            @map("created_by_id") @db.Uuid
+  activatedAt        DateTime?          @map("activated_at") @db.Timestamptz(3)
+  closedAt           DateTime?          @map("closed_at") @db.Timestamptz(3)
+  completedAt        DateTime?          @map("completed_at") @db.Timestamptz(3)
+  cancelledAt        DateTime?          @map("cancelled_at") @db.Timestamptz(3)
+  cancelReason       String?            @map("cancel_reason")
+  createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  product        Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  createdBy      User?           @relation("AuctionCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  bids           Bid[]
+  bidSubmissions BidSubmission[]
+  result         AuctionResult?
+  winner         Winner?
+  currencyRef    Currency        @relation(fields: [currency], references: [code], onDelete: Restrict)
+
+  @@index([status, closesAt])
+  @@index([status, opensAt])
+  @@map("auctions")
+}
+
+/// One paid request that may contain several bid amounts; charged by a single wallet transaction.
+model BidSubmission {
+  id                  String   @id @default(uuid()) @db.Uuid
+  auctionId           String   @map("auction_id") @db.Uuid
+  userId              String   @map("user_id") @db.Uuid
+  idempotencyKey      String   @map("idempotency_key") @db.VarChar(128)
+  bidCount            Int      @map("bid_count")
+  bidFeeMinor         BigInt   @map("bid_fee_minor") // fee per bid at submission time
+  totalFeeMinor       BigInt   @map("total_fee_minor")
+  walletTransactionId String   @unique @map("wallet_transaction_id") @db.Uuid
+  ipAddress           String?  @map("ip_address") @db.VarChar(64)
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  auction           Auction           @relation(fields: [auctionId], references: [id], onDelete: Restrict)
+  user              User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  walletTransaction WalletTransaction @relation(fields: [walletTransactionId], references: [id], onDelete: Restrict)
+  bids              Bid[]
+
+  @@unique([userId, idempotencyKey])
+  @@index([auctionId, createdAt])
+  @@map("bid_submissions")
+}
+
+/// Immutable bid (UPDATE/DELETE blocked by trigger).
+model Bid {
+  id                String   @id @default(uuid()) @db.Uuid
+  sequence          BigInt   @unique @default(autoincrement()) // global, monotonic order of acceptance
+  auctionId         String   @map("auction_id") @db.Uuid
+  userId            String   @map("user_id") @db.Uuid
+  submissionId      String   @map("submission_id") @db.Uuid
+  amountMinor       BigInt   @map("amount_minor")
+  // Set to amountMinor when the auction rejects same-user duplicates, NULL otherwise.
+  // A unique index on (auction_id, user_id, dedupe_amount_minor) then enforces the policy in the DB.
+  dedupeAmountMinor BigInt?  @map("dedupe_amount_minor")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  auction    Auction       @relation(fields: [auctionId], references: [id], onDelete: Restrict)
+  user       User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  submission BidSubmission @relation(fields: [submissionId], references: [id], onDelete: Restrict)
+  winner     Winner?
+
+  @@unique([auctionId, userId, dedupeAmountMinor])
+  @@index([auctionId, amountMinor])
+  @@index([userId, auctionId])
+  @@map("bids")
+}
+
+enum AuctionOutcome {
+  WINNER_FOUND
+  NO_BIDS
+  NO_UNIQUE_BID
+}
+
+/// Auditable record of how the result was computed. Exactly one per auction.
+model AuctionResult {
+  id                    String             @id @default(uuid()) @db.Uuid
+  auctionId             String             @unique @map("auction_id") @db.Uuid
+  outcome               AuctionOutcome
+  appliedNoUniquePolicy NoUniqueBidPolicy? @map("applied_no_unique_policy")
+  winningBidId          String?            @unique @map("winning_bid_id") @db.Uuid
+  winningAmountMinor    BigInt?            @map("winning_amount_minor")
+  winnerUserId          String?            @map("winner_user_id") @db.Uuid
+  totalBids             Int                @map("total_bids")
+  distinctAmounts       Int                @map("distinct_amounts")
+  uniqueAmounts         Int                @map("unique_amounts")
+  lastBidSequence       BigInt?            @map("last_bid_sequence") // highest bid sequence included
+  histogram             Json // [{ amountMinor, count }] sorted ascending — the full input to the algorithm
+  inputHash             String             @map("input_hash") @db.Char(64) // sha256 of canonical histogram
+  algorithmVersion      String             @map("algorithm_version") @db.VarChar(20)
+  computedAt            DateTime           @default(now()) @map("computed_at") @db.Timestamptz(3)
+
+  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Restrict)
+
+  @@map("auction_results")
+}
+
+enum WinnerVerificationStatus {
+  PENDING_VERIFICATION
+  VERIFIED
+  REJECTED
+}
+
+model Winner {
+  id                 String                   @id @default(uuid()) @db.Uuid
+  auctionId          String                   @unique @map("auction_id") @db.Uuid
+  userId             String                   @map("user_id") @db.Uuid
+  bidId              String                   @unique @map("bid_id") @db.Uuid
+  amountMinor        BigInt                   @map("amount_minor")
+  currency           String                   @db.Char(3)
+  verificationStatus WinnerVerificationStatus @default(PENDING_VERIFICATION) @map("verification_status")
+  verifiedById       String?                  @map("verified_by_id") @db.Uuid
+  verifiedAt         DateTime?                @map("verified_at") @db.Timestamptz(3)
+  publishedAt        DateTime?                @map("published_at") @db.Timestamptz(3)
+  createdAt          DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  auction     Auction        @relation(fields: [auctionId], references: [id], onDelete: Restrict)
+  user        User           @relation("WinnerUser", fields: [userId], references: [id], onDelete: Restrict)
+  bid         Bid            @relation(fields: [bidId], references: [id], onDelete: Restrict)
+  verifiedBy  User?          @relation("WinnerVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+  delivery    PrizeDelivery?
+  currencyRef Currency       @relation(fields: [currency], references: [code], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([publishedAt])
+  @@map("winners")
+}
+
+enum PrizeDeliveryStatus {
+  PENDING
+  CONTACTED
+  VERIFIED
+  DISPATCHED
+  DELIVERED
+  DISPUTED
+}
+
+model PrizeDelivery {
+  id             String              @id @default(uuid()) @db.Uuid
+  winnerId       String              @unique @map("winner_id") @db.Uuid
+  status         PrizeDeliveryStatus @default(PENDING)
+  recipientName  String?             @map("recipient_name") @db.VarChar(150)
+  recipientPhone String?             @map("recipient_phone") @db.VarChar(20)
+  address        Json?
+  trackingInfo   String?             @map("tracking_info")
+  notes          String?
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  winner Winner               @relation(fields: [winnerId], references: [id], onDelete: Restrict)
+  events PrizeDeliveryEvent[]
+
+  @@index([status])
+  @@map("prize_deliveries")
+}
+
+model PrizeDeliveryEvent {
+  id         String               @id @default(uuid()) @db.Uuid
+  deliveryId String               @map("delivery_id") @db.Uuid
+  fromStatus PrizeDeliveryStatus? @map("from_status")
+  toStatus   PrizeDeliveryStatus  @map("to_status")
+  note       String?
+  actorId    String?              @map("actor_id") @db.Uuid
+  createdAt  DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  delivery PrizeDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  actor    User?         @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([deliveryId, createdAt])
+  @@map("prize_delivery_events")
+}
+
+// ─────────────────────────────── Notifications, audit, platform ───────────────────────────────
+
+enum NotificationType {
+  PHONE_VERIFICATION
+  PASSWORD_RESET
+  BID_SUBMITTED
+  DEPOSIT_SUCCEEDED
+  LOW_BALANCE
+  AUCTION_CLOSING_REMINDER
+  AUCTION_RESULT
+  WINNER_ANNOUNCEMENT
+  PRIZE_DELIVERY_UPDATE
+  WITHDRAWAL_UPDATE
+}
+
+enum NotificationChannel {
+  SMS
+  EMAIL
+  PUSH
+  IN_APP
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  READ
+}
+
+model Notification {
+  id        String              @id @default(uuid()) @db.Uuid
+  userId    String              @map("user_id") @db.Uuid
+  type      NotificationType
+  channel   NotificationChannel
+  status    NotificationStatus  @default(PENDING)
+  title     String              @db.VarChar(200)
+  body      String
+  data      Json?
+  attempts  Int                 @default(0)
+  lastError String?             @map("last_error")
+  sentAt    DateTime?           @map("sent_at") @db.Timestamptz(3)
+  readAt    DateTime?           @map("read_at") @db.Timestamptz(3)
+  createdAt DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@map("notifications")
+}
+
+enum ActorType {
+  USER
+  ADMIN
+  SYSTEM
+}
+
+model AuditLog {
+  id         String    @id @default(uuid()) @db.Uuid
+  actorId    String?   @map("actor_id") @db.Uuid
+  actorType  ActorType @map("actor_type")
+  action     String    @db.VarChar(100) // e.g. "user.suspend", "auction.activate"
+  entityType String    @map("entity_type") @db.VarChar(50)
+  entityId   String?   @map("entity_id") @db.VarChar(64)
+  before     Json?
+  after      Json?
+  metadata   Json?
+  ipAddress  String?   @map("ip_address") @db.VarChar(64)
+  userAgent  String?   @map("user_agent") @db.VarChar(512)
+  requestId  String?   @map("request_id") @db.VarChar(64)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+  @@map("audit_logs")
+}
+
+enum IdempotencyStatus {
+  IN_PROGRESS
+  COMPLETED
+}
+
+model IdempotencyRecord {
+  id           String            @id @default(uuid()) @db.Uuid
+  userId       String            @map("user_id") @db.Uuid
+  scope        String            @db.VarChar(100) // e.g. "POST /auctions/:id/bids"
+  key          String            @db.VarChar(128)
+  requestHash  String            @map("request_hash") @db.Char(64)
+  status       IdempotencyStatus @default(IN_PROGRESS)
+  responseCode Int?              @map("response_code")
+  responseBody Json?             @map("response_body")
+  lockedUntil  DateTime?         @map("locked_until") @db.Timestamptz(3)
+  expiresAt    DateTime          @map("expires_at") @db.Timestamptz(3)
+  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, scope, key])
+  @@index([expiresAt])
+  @@map("idempotency_records")
+}
+
+/// Runtime-configurable business rules (bid limits, low-balance threshold, etc.).
+model SystemSetting {
+  key         String   @id @db.VarChar(100)
+  value       Json
+  description String?
+  updatedById String?  @map("updated_by_id") @db.Uuid
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("system_settings")
+}

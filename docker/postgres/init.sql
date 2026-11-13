@@ -1,0 +1,1 @@
+CREATE DATABASE lub_test;

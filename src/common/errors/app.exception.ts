@@ -1,0 +1,41 @@
+import { HttpException, HttpStatus } from '@nestjs/common';
+
+/** Machine-readable error codes returned in the `error` field of every error response. */
+export enum ErrorCode {
+  VALIDATION_FAILED = 'VALIDATION_FAILED',
+  UNAUTHORIZED = 'UNAUTHORIZED',
+  FORBIDDEN = 'FORBIDDEN',
+  NOT_FOUND = 'NOT_FOUND',
+  CONFLICT = 'CONFLICT',
+  RATE_LIMITED = 'RATE_LIMITED',
+  INTERNAL_ERROR = 'INTERNAL_ERROR',
+
+  INVALID_PHONE_NUMBER = 'INVALID_PHONE_NUMBER',
+  PHONE_ALREADY_REGISTERED = 'PHONE_ALREADY_REGISTERED',
+  EMAIL_ALREADY_IN_USE = 'EMAIL_ALREADY_IN_USE',
+  INVALID_CREDENTIALS = 'INVALID_CREDENTIALS',
+  PHONE_NOT_VERIFIED = 'PHONE_NOT_VERIFIED',
+  PHONE_ALREADY_VERIFIED = 'PHONE_ALREADY_VERIFIED',
+  REGISTRATION_SUPERSEDED = 'REGISTRATION_SUPERSEDED',
+  ACCOUNT_SUSPENDED = 'ACCOUNT_SUSPENDED',
+  ACCOUNT_BLOCKED = 'ACCOUNT_BLOCKED',
+  ACCOUNT_LOCKED = 'ACCOUNT_LOCKED',
+  OTP_INVALID = 'OTP_INVALID',
+  OTP_ATTEMPTS_EXCEEDED = 'OTP_ATTEMPTS_EXCEEDED',
+  OTP_COOLDOWN = 'OTP_COOLDOWN',
+  OTP_LIMIT_REACHED = 'OTP_LIMIT_REACHED',
+  OTP_DELIVERY_FAILED = 'OTP_DELIVERY_FAILED',
+  INVALID_REFRESH_TOKEN = 'INVALID_REFRESH_TOKEN',
+  PASSWORD_REUSED = 'PASSWORD_REUSED',
+}
+
+export class AppException extends HttpException {
+  constructor(
+    status: HttpStatus,
+    public readonly code: ErrorCode,
+    message: string,
+    public readonly details?: Record<string, unknown>,
+  ) {
+    super({ error: code, message, details }, status);
+  }
+}
