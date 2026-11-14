@@ -2,22 +2,11 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { EntryDirection, LedgerAccountType, WalletTransactionStatus, WalletTransactionType } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { IsEnum, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { CurrencyCode } from '../../../common/dto/currency-code.decorator';
 import { Trim } from '../../../common/utils/trim.transform';
 
 const MINOR = 'Integer amount in minor units (santim for ETB), as a string so large values keep full precision.';
 const DECIMAL = 'The same amount formatted in major units for display. Do not use it for arithmetic.';
-
-function CurrencyCode() {
-  return function (target: object, key: string) {
-    ApiPropertyOptional({ example: 'ETB', description: 'ISO-4217 code. Defaults to the platform currency.' })(
-      target,
-      key,
-    );
-    IsOptional()(target, key);
-    Trim()(target, key);
-    Matches(/^[A-Za-z]{3}$/, { message: 'currency must be a 3-letter ISO-4217 code' })(target, key);
-  };
-}
 
 export class WalletQueryDto {
   @CurrencyCode()

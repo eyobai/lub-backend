@@ -26,6 +26,7 @@ const defaults: Record<string, string> = {
   THROTTLE_TTL_SECONDS: '60',
   THROTTLE_LIMIT: '100000',
   AUTH_THROTTLE_LIMIT: '100000',
+  AUCTION_SWEEP_INTERVAL_SECONDS: '0',
   TRUST_PROXY: 'false',
   SWAGGER_ENABLED: 'false',
 };

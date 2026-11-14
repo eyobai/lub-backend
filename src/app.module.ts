@@ -15,10 +15,13 @@ import { APP_CONFIG } from './config/configuration';
 import type { AppConfig } from './config/configuration';
 import { PrismaModule } from './infra/prisma/prisma.module';
 import { REDIS_CLIENT, RedisModule } from './infra/redis/redis.module';
+import { AuctionsModule } from './modules/auctions/auctions.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { CurrencyModule } from './modules/currency/currency.module';
 import { HealthModule } from './modules/health/health.module';
 import { PhoneModule } from './modules/phone/phone.module';
+import { ProductsModule } from './modules/products/products.module';
 import { WalletModule } from './modules/wallet/wallet.module';
 
 /** Human-readable logs in development, when the dev-only pretty printer is installed; JSON otherwise. */
@@ -76,8 +79,11 @@ function prettyLogs(config: AppConfig): boolean {
     PhoneModule,
     HealthModule,
     AuditModule,
+    CurrencyModule,
     AuthModule,
     WalletModule,
+    ProductsModule,
+    AuctionsModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

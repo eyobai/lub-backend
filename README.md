@@ -81,3 +81,25 @@ All amounts are integer minor units (santim) sent as strings, with a formatted c
 
 `SUPER_ADMIN` passes every role check. There is no user-facing deposit endpoint yet: deposits
 arrive with the payments module. Until then a FINANCE user funds test wallets with an adjustment.
+
+## Product and auction endpoints
+
+| Method | Path                                       | Auth                    | Purpose                                        |
+| ------ | ------------------------------------------ | ----------------------- | ---------------------------------------------- |
+| GET    | `/auctions`                                | none                    | Upcoming, running and finished auctions        |
+| GET    | `/auctions/:id`                            | none                    | One public auction, with its product           |
+| GET    | `/admin/products`, `/admin/products/:id`   | SUPPORT, FINANCE, ADMIN | Product catalogue                              |
+| POST   | `/admin/products`                          | ADMIN                   | Create a product (images are URLs)             |
+| PATCH  | `/admin/products/:id`                      | ADMIN                   | Edit a product, change its status              |
+| GET    | `/admin/auctions`, `/admin/auctions/:id`   | SUPPORT, FINANCE, ADMIN | Auctions in any status                         |
+| POST   | `/admin/auctions`                          | ADMIN                   | Create an auction as a `DRAFT`                 |
+| PATCH  | `/admin/auctions/:id`                      | ADMIN                   | Edit (everything until bidding opens)          |
+| POST   | `/admin/auctions/:id/schedule`             | ADMIN                   | `DRAFT` → `SCHEDULED`; opens itself at opensAt |
+| POST   | `/admin/auctions/:id/unschedule`           | ADMIN                   | `SCHEDULED` → `DRAFT`                          |
+| POST   | `/admin/auctions/:id/activate`             | ADMIN                   | Open for bidding now                           |
+| POST   | `/admin/auctions/:id/cancel`               | ADMIN                   | Cancel with a reason (not once it has bids)    |
+
+Auctions open and close by the database clock. A background job (every
+`AUCTION_SWEEP_INTERVAL_SECONDS`, default 5) moves `SCHEDULED` → `ACTIVE` at `opensAt` and
+`ACTIVE` → `CLOSING` at `closesAt`. `CLOSING` → `COMPLETED` arrives with winner calculation.
+Dates must carry a time zone, e.g. `2027-01-31T09:00:00+03:00`.

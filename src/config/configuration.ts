@@ -31,6 +31,8 @@ export interface AppConfig {
   };
   phone: { allowedCountries: CountryCode[]; defaultCountry: CountryCode; verificationRequired: boolean };
   throttle: { ttlSeconds: number; limit: number; authLimit: number };
+  /** How often due auctions are opened/closed, in seconds. 0 turns the background sweep off. */
+  auctions: { sweepIntervalSeconds: number };
 }
 
 /** Builds the typed config from already-validated environment variables. */
@@ -87,6 +89,7 @@ export function configuration(): { app: AppConfig } {
         limit: num('THROTTLE_LIMIT', 120),
         authLimit: num('AUTH_THROTTLE_LIMIT', 10),
       },
+      auctions: { sweepIntervalSeconds: num('AUCTION_SWEEP_INTERVAL_SECONDS', 5) },
     },
   };
 }

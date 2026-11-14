@@ -1,14 +1,13 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
 import { ActorType, EntryDirection, LedgerAccountType, WalletTransactionType } from '@prisma/client';
 import type { Currency, LedgerAccount, Prisma, Wallet } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import type { ClientInfo } from '../../common/decorators/client-info.decorator';
 import { AppException, ErrorCode } from '../../common/errors/app.exception';
 import { formatMinor } from '../../common/utils/money';
-import { APP_CONFIG } from '../../config/configuration';
-import type { AppConfig } from '../../config/configuration';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { CurrencyService } from '../currency/currency.service';
 import { LedgerService } from '../ledger/ledger.service';
 import type { PostingResult, Tx } from '../ledger/ledger.types';
 import type {
@@ -53,7 +52,7 @@ export class WalletService {
     private readonly prisma: PrismaService,
     private readonly ledger: LedgerService,
     private readonly audit: AuditService,
-    @Inject(APP_CONFIG) private readonly config: AppConfig,
+    private readonly currencies: CurrencyService,
   ) {}
 
   // ── Queries ────────────────────────────────────────────────────────────────
@@ -341,17 +340,8 @@ export class WalletService {
     }, tx);
   }
 
-  private async resolveCurrency(code?: string, allowInactive = false): Promise<Currency> {
-    const wanted = (code ?? this.config.defaultCurrency).toUpperCase();
-    const currency = await this.prisma.currency.findUnique({ where: { code: wanted } });
-    if (!currency || (!currency.isActive && !allowInactive)) {
-      throw new AppException(
-        HttpStatus.BAD_REQUEST,
-        ErrorCode.CURRENCY_NOT_SUPPORTED,
-        `Currency ${wanted} is not supported`,
-      );
-    }
-    return currency;
+  private resolveCurrency(code?: string, allowInactive = false): Promise<Currency> {
+    return this.currencies.resolve(code, allowInactive);
   }
 
   private async assertUserExists(userId: string): Promise<void> {

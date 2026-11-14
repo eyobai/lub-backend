@@ -77,6 +77,8 @@ export const envSchema = Joi.object({
   THROTTLE_TTL_SECONDS: Joi.number().integer().min(1).default(60),
   THROTTLE_LIMIT: Joi.number().integer().min(1).default(120),
   AUTH_THROTTLE_LIMIT: Joi.number().integer().min(1).default(10),
+
+  AUCTION_SWEEP_INTERVAL_SECONDS: Joi.number().integer().min(0).max(3600).default(5),
 }).unknown(true);
 
 export function validateEnv(config: Record<string, unknown>): Record<string, unknown> {

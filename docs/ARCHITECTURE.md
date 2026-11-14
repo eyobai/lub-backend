@@ -72,14 +72,17 @@ src/
     ledger/                              double-entry posting, reversal, reconciliation
     wallet/                              wallet balance/history, admin adjustments and freezing
     audit/                               audit-log writer used inside business transactions
+    currency/                            resolves and validates the currency of a request
+    products/                            product catalogue (back office)
+    auctions/                            auction setup, lifecycle, public listing, open/close job
     auth/                                registration, login, tokens, password recovery
   scripts/seed-admin.ts                  bootstrap SUPER_ADMIN
 prisma/schema.prisma, prisma/migrations  schema and SQL migrations
 test/                                    integration tests against real PostgreSQL + Redis
 ```
 
-Planned modules, one per phase: `wallet` (ledger), `payments`, `products`, `auctions`,
-`bidding`, `results` (winner calculation), `notifications`, `admin`, `audit`.
+Planned modules, one per phase: `payments`, `bidding`, `results` (winner calculation),
+`notifications`, `admin`.
 
 ## 4. Authentication
 
@@ -229,6 +232,57 @@ Known limit: every bid fee locks the single platform-revenue row for its currenc
 serializes fee postings platform-wide. Transactions are short, so this is fine at launch scale;
 if it becomes a bottleneck the revenue account can be sharded or its cached balance dropped.
 
+### Products
+
+- A product is a prize description: name, brand, model, market value (minor units + currency),
+  a flat specifications object and an ordered list of image URLs. Image files are hosted
+  elsewhere; this backend stores only their URLs.
+- Products are never deleted. `ARCHIVED` retires one; the same product can back any number of
+  auctions.
+- A product's currency cannot be changed after creation.
+- While a product has a `SCHEDULED`, `ACTIVE` or `CLOSING` auction it must stay `AVAILABLE`.
+  Product updates lock the product row, and publishing an auction share-locks it, so the two
+  cannot slip past each other.
+
+### Auctions
+
+Lifecycle:
+
+```
+DRAFT ──schedule──▶ SCHEDULED ──opensAt (job) or activate──▶ ACTIVE ──closesAt (job)──▶ CLOSING ──▶ COMPLETED
+  │  ◀──unschedule──┘   │                                      │                          (winner phase)
+  └── activate ─────────┼──────────────────────────────────────▶
+  cancel from DRAFT, SCHEDULED or ACTIVE (only while there are no bids) ──▶ CANCELLED
+```
+
+- An auction takes its currency from its product. Bid fee, minimum, maximum and step are minor
+  units; the maximum must sit on the step grid (`min + n × step`).
+- `DRAFT` auctions are invisible to users. Scheduling or activating requires an `AVAILABLE`
+  product, a chosen no-unique-bid policy (`NO_WINNER` or `REFUND_BID_FEES`; `EXTEND_AUCTION`
+  is in the schema but not accepted until its rules are defined) and a closing time in the
+  future. Scheduling also needs an opening time in the future; activating opens it now and
+  sets `opensAt` to the actual opening time.
+- Everything is editable in `DRAFT` and `SCHEDULED` (a scheduled auction must stay publishable).
+  In `ACTIVE` only title and description can change, so the rules bidders paid under are fixed.
+  From `CLOSING` on nothing can change.
+- Cancelling needs a reason and is refused once the auction has bids, because those fees would
+  have to be refunded; that path is built with bidding.
+- Every admin action row-locks the auction, bumps `version` and writes an audit record with
+  before/after snapshots in the same transaction. Concurrent requests for the same transition
+  succeed exactly once.
+- **Time:** the database clock (`clock_timestamp()` / `now()`) decides every deadline; request
+  bodies and application servers' clocks are never trusted. Responses include `serverTime` so
+  clients can run countdowns against it.
+- **Automatic transitions:** a repeating BullMQ job runs one sweep transaction that opens due
+  `SCHEDULED` auctions and moves `ACTIVE` auctions past `closesAt` to `CLOSING`, each recorded
+  in the audit log as a `SYSTEM` action. A transaction-level advisory lock keeps sweeps from
+  overlapping across instances. The sweep only bounds how late the *status* flips; the bidding
+  module must still compare the database clock with `closesAt` itself, so a bid can never be
+  accepted after the deadline even if a sweep is late.
+- Public visibility: `SCHEDULED`, `ACTIVE`, `CLOSING`, `COMPLETED`, plus `CANCELLED` auctions
+  that had been open for bidding. Public responses omit internal fields (creator, version,
+  product status, cancel reason).
+
 ### Bids and results
 
 - `bid_submissions` is one paid request (one or many amounts, one fee total, one ledger
@@ -260,9 +314,9 @@ triggers on `ledger_entries`, `bids`, `bid_submissions`, `audit_logs` and `aucti
   returns the original result instead of charging twice.
 - **Payment callbacks** are stored raw in `payment_provider_events` with a unique provider
   event ID; a wallet is credited at most once per provider transaction.
-- **Closing an auction** is a BullMQ job that moves the auction to `CLOSING` under a row lock
-  (which blocks new bids), computes the result with one deterministic SQL aggregation and
-  writes `auction_results` and `winners` in the same transaction.
+- **Closing an auction:** the lifecycle sweep (built) moves it to `CLOSING`, which blocks new
+  bids. A later job computes the result with one deterministic SQL aggregation and writes
+  `auction_results` and `winners` in one transaction, then sets `COMPLETED`.
 
 ## 7. Configuration and environments
 
@@ -283,9 +337,15 @@ See `.env.example` for the full list.
   Wallet tests cover concurrent spending, idempotent retries, rollback, immutability triggers,
   reversal, freezing, reconciliation and role checks on every admin route.
 
+  Product and auction tests cover validation, role checks on every admin route, each lifecycle
+  transition and its refusals, concurrent activation, product protection while an auction is
+  live, the open/close sweep (including concurrent sweeps) and the background job itself.
+
 ## 9. Not built yet / decisions needed
 
-- Payments (user deposits, provider callbacks), withdrawals, products, auctions, bidding,
-  winner calculation, notifications, and the rest of the admin APIs.
+- Payments (user deposits, provider callbacks), withdrawals, bidding, winner calculation
+  (`CLOSING` → `COMPLETED`), notifications, and the rest of the admin APIs.
+- Cancelling an auction that has bids (needs bid-fee refunds) and the `EXTEND_AUCTION` policy.
+- Product image upload: images are external URLs for now.
 - Staff-driven password reset: needed because SMS reset is off by default.
 - Real-money payments and public paid auctions must wait for legal and regulatory review.
