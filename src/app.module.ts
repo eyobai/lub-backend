@@ -25,6 +25,7 @@ import { HealthModule } from './modules/health/health.module';
 import { PhoneModule } from './modules/phone/phone.module';
 import { ProductsModule } from './modules/products/products.module';
 import { WalletModule } from './modules/wallet/wallet.module';
+import { WinnersModule } from './modules/winners/winners.module';
 
 /** Human-readable logs in development, when the dev-only pretty printer is installed; JSON otherwise. */
 function prettyLogs(config: AppConfig): boolean {
@@ -88,6 +89,7 @@ function prettyLogs(config: AppConfig): boolean {
     AuctionsModule,
     BiddingModule,
     ResultsModule,
+    WinnersModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

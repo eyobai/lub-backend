@@ -43,6 +43,7 @@ export interface TestApp {
   sms: CapturingOtpSender;
   post: (path: string, body?: object, accessToken?: string) => request.Test;
   patch: (path: string, body?: object, accessToken?: string) => request.Test;
+  put: (path: string, body?: object, accessToken?: string) => request.Test;
   get: (path: string, accessToken?: string) => request.Test;
   reset: () => Promise<void>;
   close: () => Promise<void>;
@@ -77,6 +78,7 @@ export async function createTestApp(envOverrides: Record<string, string> = {}): 
     sms,
     post: (path, body = {}, token) => withAuth(request(app.getHttpServer()).post(url(path)).send(body), token),
     patch: (path, body = {}, token) => withAuth(request(app.getHttpServer()).patch(url(path)).send(body), token),
+    put: (path, body = {}, token) => withAuth(request(app.getHttpServer()).put(url(path)).send(body), token),
     get: (path, token) => withAuth(request(app.getHttpServer()).get(url(path)), token),
     reset: async () => {
       const tables = await prisma.$queryRaw<{ tablename: string }[]>`

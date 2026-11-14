@@ -77,14 +77,14 @@ src/
     auctions/                            auction setup, lifecycle, public listing, open/close job
     bidding/                             placing bids, bid history, bid-fee refunds
     results/                             winner calculation, auction results, result re-check
+    winners/                             winner verification, publishing, prize delivery
     auth/                                registration, login, tokens, password recovery
   scripts/seed-admin.ts                  bootstrap SUPER_ADMIN
 prisma/schema.prisma, prisma/migrations  schema and SQL migrations
 test/                                    integration tests against real PostgreSQL + Redis
 ```
 
-Planned modules, one per phase: `payments`, `winners` (verification, prize delivery),
-`notifications`, `admin`.
+Planned modules, one per phase: `payments`, `notifications`, `admin`.
 
 ## 4. Authentication
 
@@ -341,6 +341,24 @@ can also trigger it. Finalization is one database transaction:
   user also sees how each of their own bids fared. The winner's identity and the per-amount
   counts are staff-only.
 
+### Winners and prize delivery
+
+- **Verification:** a winner starts `PENDING_VERIFICATION`. An ADMIN verifies or rejects (with a
+  reason). Before verifying, the result is recomputed from the bids on record and must still
+  name the same winning bid; staff cannot verify their own win. Rejecting changes nothing else:
+  the result stays on record and no other winner is picked. A rejected winner can be verified
+  later.
+- **Publishing:** only a verified winner can be published, enforced by a `CHECK` constraint as
+  well. The public recent-winners list shows published winners with the product, the winning
+  amount and a masked phone number (`+2519******67`); no user ID or name.
+- **Delivery:** verifying opens one `prize_deliveries` row. Status moves one step at a time,
+  `PENDING` → `CONTACTED` → `VERIFIED` → `DISPATCHED` → `DELIVERED`; `DISPUTED` can be set from
+  any status and left for any later step, both with a note. Dispatching and delivering need the
+  recipient name, phone and address. Each change adds a `prize_delivery_events` row.
+- **Delivery details:** the winner can send recipient and address while the delivery is
+  `PENDING` or `CONTACTED`; after that only SUPPORT or ADMIN can change them.
+- Every action row-locks the winner, and writes an audit record with before/after values.
+
 ### Bids and results
 
 - `bid_submissions` is one paid request (one or many amounts, one fee total, one ledger
@@ -400,10 +418,15 @@ See `.env.example` for the full list.
   policy, exactly-once refunds, concurrent finalization, bids racing the close, immutability of
   results, the re-check and role checks.
 
+  Winner tests cover verification, rejection, the result re-check before verifying, publishing
+  and the public list, every delivery step and its requirements, the winner's own delivery
+  details, audit records and role checks.
+
 ## 9. Not built yet / decisions needed
 
-- Payments (user deposits, provider callbacks), withdrawals, winner verification and
-  publishing, prize delivery, notifications, and the rest of the admin APIs.
+- Payments (user deposits, provider callbacks), withdrawals, notifications, and the rest of the
+  admin APIs.
+- What happens to the prize and the fees when a winner is rejected.
 - The `EXTEND_AUCTION` no-unique-bid policy.
 - Product image upload: images are external URLs for now.
 - Staff-driven password reset: needed because SMS reset is off by default.

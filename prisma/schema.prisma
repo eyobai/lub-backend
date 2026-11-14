@@ -617,6 +617,7 @@ model Winner {
   verificationStatus WinnerVerificationStatus @default(PENDING_VERIFICATION) @map("verification_status")
   verifiedById       String?                  @map("verified_by_id") @db.Uuid
   verifiedAt         DateTime?                @map("verified_at") @db.Timestamptz(3)
+  verificationNote   String?                  @map("verification_note")
   publishedAt        DateTime?                @map("published_at") @db.Timestamptz(3)
   createdAt          DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt          DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)

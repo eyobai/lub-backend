@@ -127,3 +127,21 @@ all or nothing. Staff accounts cannot bid. Cancelling an auction refunds every b
 
 The winner is the lowest amount that was bid exactly once. If no amount is unique, the auction's
 `noUniqueBidPolicy` applies: `NO_WINNER` keeps the fees, `REFUND_BID_FEES` returns them.
+
+## Winner and delivery endpoints
+
+| Method | Path                                 | Auth                    | Purpose                                       |
+| ------ | ------------------------------------ | ----------------------- | --------------------------------------------- |
+| GET    | `/winners`                           | Public                  | Recent winners (verified and published)       |
+| GET    | `/winners/mine`                      | Bearer                  | My wins, verification and delivery progress   |
+| PUT    | `/winners/mine/:id/delivery-details` | Bearer                  | Send who receives my prize and where          |
+| GET    | `/admin/winners`, `/:id`             | SUPPORT, FINANCE, ADMIN | List and view winners with delivery history   |
+| POST   | `/admin/winners/:id/verify`          | ADMIN                   | Verify a winner; opens the prize delivery     |
+| POST   | `/admin/winners/:id/reject`          | ADMIN                   | Reject a winner with a reason                 |
+| POST   | `/admin/winners/:id/publish`         | ADMIN                   | Show a verified winner in the public list     |
+| POST   | `/admin/winners/:id/unpublish`       | ADMIN                   | Remove a winner from the public list          |
+| PATCH  | `/admin/winners/:id/delivery`        | SUPPORT, ADMIN          | Update recipient, address, tracking and notes |
+| POST   | `/admin/winners/:id/delivery/status` | SUPPORT, ADMIN          | Move the delivery to its next status          |
+
+Delivery statuses: `PENDING` → `CONTACTED` → `VERIFIED` → `DISPATCHED` → `DELIVERED`, plus
+`DISPUTED`, which can be set from any status.
