@@ -125,3 +125,11 @@ export const deliveryUpdated = (
     (status === PrizeDeliveryStatus.DISPATCHED && trackingInfo ? ` Tracking: ${trackingInfo}` : ''),
   data: { auctionId: auction.id, winnerId, deliveryStatus: status },
 });
+
+/** Never carries the temporary password: staff pass it on themselves. */
+export const passwordResetByStaff = (): NotificationMessage => ({
+  type: NotificationType.PASSWORD_RESET,
+  title: 'Your password was reset',
+  body: 'Support reset your password and signed you out everywhere. If you did not ask for this, contact support.',
+  data: {},
+});

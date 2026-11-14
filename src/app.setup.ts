@@ -50,6 +50,8 @@ export function buildOpenApiDocument(app: INestApplication) {
     .addTag('Results', 'Auction results')
     .addTag('Winners', 'Recent winners and my wins')
     .addTag('Notifications', 'My notifications')
+    .addTag('Admin: Users', 'Back-office user accounts: status, roles, password reset and sessions')
+    .addTag('Admin: Monitoring', 'Dashboard figures, auction statistics, audit log and security events')
     .addTag('Admin: Winners', 'Winner verification, publishing and prize delivery')
     .addTag('Admin: Products', 'Back-office product catalogue')
     .addTag('Admin: Auctions', 'Back-office auction setup and lifecycle')

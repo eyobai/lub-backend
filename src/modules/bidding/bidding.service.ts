@@ -1,11 +1,12 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { ActorType, AuctionStatus, DuplicateBidPolicy, EntryDirection, RoleName } from '@prisma/client';
+import { ActorType, AuctionStatus, DuplicateBidPolicy, EntryDirection } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import type { ClientInfo } from '../../common/decorators/client-info.decorator';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { paging } from '../../common/dto/page-query.dto';
 import { AppException, ErrorCode } from '../../common/errors/app.exception';
+import { isStaff } from '../../common/roles';
 import { formatMinor } from '../../common/utils/money';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -22,8 +23,6 @@ import type {
 } from './dto/bid.dto';
 
 type Tx = Prisma.TransactionClient;
-
-const STAFF_ROLES: RoleName[] = [RoleName.SUPPORT, RoleName.FINANCE, RoleName.ADMIN, RoleName.SUPER_ADMIN];
 
 const submissionInclude = {
   bids: { orderBy: { sequence: 'asc' } },
@@ -84,7 +83,7 @@ export class BiddingService {
     idempotencyKey: string,
     client: ClientInfo,
   ): Promise<{ submission: BidSubmissionDto; replayed: boolean }> {
-    if (user.roles.some((role) => STAFF_ROLES.includes(role))) {
+    if (isStaff(user.roles)) {
       // Staff can see every bid of an auction, so they must not take part in one.
       throw new AppException(HttpStatus.FORBIDDEN, ErrorCode.FORBIDDEN, 'Staff accounts cannot place bids');
     }

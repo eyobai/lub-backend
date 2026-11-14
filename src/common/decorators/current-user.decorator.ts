@@ -7,6 +7,8 @@ export interface AuthenticatedUser {
   roles: RoleName[];
   /** Login session (refresh-token family) the access token belongs to. */
   sessionId: string;
+  /** Staff reset the password: only changing it (and signing out) is allowed until the user picks a new one. */
+  mustChangePassword: boolean;
 }
 
 export const CurrentUser = createParamDecorator((_data: unknown, ctx: ExecutionContext): AuthenticatedUser => {

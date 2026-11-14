@@ -56,6 +56,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       phoneNumber: user.phoneNumber,
       roles: user.roles.map((r) => r.role.name),
       sessionId: payload.sid,
+      mustChangePassword: user.mustChangePassword,
     };
   }
 }

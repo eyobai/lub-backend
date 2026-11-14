@@ -34,6 +34,8 @@ model User {
   status            AccountStatus @default(ACTIVE)
   statusReason      String?       @map("status_reason")
   passwordChangedAt DateTime?     @map("password_changed_at") @db.Timestamptz(3)
+  /// Set when staff reset the password; cleared when the user chooses a new one.
+  mustChangePassword Boolean      @default(false) @map("must_change_password")
   lastLoginAt       DateTime?     @map("last_login_at") @db.Timestamptz(3)
   createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -173,6 +175,7 @@ model SecurityEvent {
 
   @@index([userId, createdAt])
   @@index([type, createdAt])
+  @@index([createdAt])
   @@map("security_events")
 }
 
@@ -757,6 +760,7 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([actorId, createdAt])
   @@index([action, createdAt])
+  @@index([createdAt])
   @@map("audit_logs")
 }
 

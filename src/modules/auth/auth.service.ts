@@ -299,7 +299,10 @@ export class AuthService {
     try {
       await this.prisma.$transaction(async (tx) => {
         await this.otp.verifyAndConsume(phoneNumber, OtpPurpose.PASSWORD_RESET, dto.code, tx);
-        await tx.user.update({ where: { id: user.id }, data: { passwordHash, passwordChangedAt: new Date() } });
+        await tx.user.update({
+          where: { id: user.id },
+          data: { passwordHash, passwordChangedAt: new Date(), mustChangePassword: false },
+        });
         await this.tokens.revokeAllForUser(user.id, RevokeReason.PASSWORD_RESET, tx);
       });
     } catch (err) {
@@ -335,7 +338,10 @@ export class AuthService {
     const passwordHash = await this.passwords.hash(dto.newPassword);
 
     const tokens = await this.prisma.$transaction(async (tx) => {
-      await tx.user.update({ where: { id: userId }, data: { passwordHash, passwordChangedAt: new Date() } });
+      await tx.user.update({
+        where: { id: userId },
+        data: { passwordHash, passwordChangedAt: new Date(), mustChangePassword: false },
+      });
       await this.tokens.revokeAllForUser(userId, RevokeReason.PASSWORD_CHANGED, tx);
       return this.tokens.issueSession({ id: userId, roles: this.roleNames(user) }, client, tx);
     });
@@ -344,7 +350,7 @@ export class AuthService {
       phoneNumber: user.phoneNumber,
       client,
     });
-    return { user: this.toAuthUser(user), tokens };
+    return { user: { ...this.toAuthUser(user), mustChangePassword: false }, tokens };
   }
 
   async me(userId: string): Promise<AuthUserDto> {
@@ -418,6 +424,7 @@ export class AuthService {
       phoneVerified: !!user.phoneVerifiedAt,
       status: user.status,
       roles: this.roleNames(user),
+      mustChangePassword: user.mustChangePassword,
       fullName: user.profile?.fullName ?? null,
       email: user.profile?.email ?? null,
       createdAt: user.createdAt,

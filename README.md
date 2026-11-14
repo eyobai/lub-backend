@@ -63,6 +63,9 @@ All under `/api/v1/auth`.
 "SMS mode only" endpoints answer `403 SMS_VERIFICATION_DISABLED` while
 `PHONE_VERIFICATION_REQUIRED=false`.
 
+After staff reset a password, the account answers `403 PASSWORD_CHANGE_REQUIRED` on everything
+except `/me`, `/change-password` and `/logout-all` until its owner chooses a new password.
+
 ## Wallet endpoints
 
 All amounts are integer minor units (santim) sent as strings, with a formatted copy for display.
@@ -159,3 +162,24 @@ Notifications are written for bid confirmations, low balance, wallet credits, cl
 (`AUCTION_CLOSING_REMINDER_MINUTES`, default 60, `0` turns them off), auction results and
 cancellations, winner verification and prize delivery steps. They are stored in-app only: no SMS,
 email or push provider is registered, so nothing leaves the system.
+
+## Admin management endpoints
+
+| Method | Path                               | Roles                   | Purpose                                                                 |
+| ------ | ---------------------------------- | ----------------------- | ----------------------------------------------------------------------- |
+| GET    | `/admin/users`                     | SUPPORT, FINANCE, ADMIN | List users (`search`, `status`, `role`, paging)                         |
+| GET    | `/admin/users/:id`                 | SUPPORT, FINANCE, ADMIN | One user with session, bid and win counts                               |
+| POST   | `/admin/users/:id/suspend`         | ADMIN                   | Suspend and sign out (reason required)                                  |
+| POST   | `/admin/users/:id/block`           | ADMIN                   | Block and sign out (reason required)                                    |
+| POST   | `/admin/users/:id/reactivate`      | ADMIN                   | Make the account active again                                           |
+| PUT    | `/admin/users/:id/roles`           | SUPER_ADMIN             | Replace the account's back-office roles                                 |
+| POST   | `/admin/users/:id/reset-password`  | SUPPORT, ADMIN          | Set a temporary password, shown once; signs the user out                |
+| POST   | `/admin/users/:id/revoke-sessions` | SUPPORT, ADMIN          | Sign the user out of every device                                       |
+| GET    | `/admin/audit-logs`                | ADMIN                   | Audit log (`actorId`, `action`, `entityType`, `entityId`, `from`, `to`) |
+| GET    | `/admin/audit-logs/:id`            | ADMIN                   | One audit record with before/after values                               |
+| GET    | `/admin/security-events`           | ADMIN                   | Sign-in activity (`type`, `userId`, `phoneNumber`, `from`, `to`)        |
+| GET    | `/admin/dashboard`                 | FINANCE, ADMIN          | Users, auctions, bids, winners, deliveries and money                    |
+| GET    | `/admin/auctions/:id/statistics`   | SUPPORT, FINANCE, ADMIN | Bidding figures of one auction                                          |
+
+`SUPER_ADMIN` passes every role check. Nobody can act on their own account, and only a
+`SUPER_ADMIN` can suspend, block, reset, sign out or change the roles of a staff account.

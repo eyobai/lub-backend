@@ -9,12 +9,14 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { LoggerModule } from 'nestjs-pino';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
+import { PasswordChangeGuard } from './common/guards/password-change.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { AppConfigModule } from './config/config.module';
 import { APP_CONFIG } from './config/configuration';
 import type { AppConfig } from './config/configuration';
 import { PrismaModule } from './infra/prisma/prisma.module';
 import { REDIS_CLIENT, RedisModule } from './infra/redis/redis.module';
+import { AdminModule } from './modules/admin/admin.module';
 import { AuctionsModule } from './modules/auctions/auctions.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -92,12 +94,14 @@ function prettyLogs(config: AppConfig): boolean {
     NotificationsModule,
     ResultsModule,
     WinnersModule,
+    AdminModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
     // Order matters: rate limit first, then authenticate, then authorize.
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: PasswordChangeGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],
 })

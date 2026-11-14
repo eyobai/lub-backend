@@ -14,6 +14,6 @@ import { TokenService } from './token.service';
   imports: [PassportModule, JwtModule.register({}), OtpModule],
   controllers: [AuthController],
   providers: [AuthService, TokenService, PasswordService, LoginAttemptService, SecurityEventService, JwtStrategy],
-  exports: [TokenService, PasswordService, SecurityEventService],
+  exports: [TokenService, PasswordService, SecurityEventService, LoginAttemptService],
 })
 export class AuthModule {}

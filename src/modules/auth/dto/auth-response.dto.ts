@@ -38,6 +38,12 @@ export class AuthUserDto {
   @ApiProperty({ enum: RoleName, isArray: true, example: [RoleName.USER] })
   roles!: RoleName[];
 
+  @ApiProperty({
+    example: false,
+    description: 'true after staff reset the password: call POST /auth/change-password before anything else.',
+  })
+  mustChangePassword!: boolean;
+
   @ApiPropertyOptional({ example: 'Abebe Kebede', nullable: true })
   fullName!: string | null;
 

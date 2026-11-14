@@ -13,6 +13,7 @@ import {
   ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import { AllowPendingPasswordChange } from '../../common/decorators/allow-pending-password-change.decorator';
 import { AuthThrottle } from '../../common/decorators/auth-throttle.decorator';
 import { Client } from '../../common/decorators/client-info.decorator';
 import type { ClientInfo } from '../../common/decorators/client-info.decorator';
@@ -147,6 +148,7 @@ export class AuthController {
   }
 
   @Post('logout-all')
+  @AllowPendingPasswordChange()
   @ApiBearerAuth()
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Sign out of every session on every device' })
@@ -185,12 +187,15 @@ export class AuthController {
   }
 
   @Post('change-password')
+  @AllowPendingPasswordChange()
   @ApiBearerAuth()
   @AuthThrottle()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Change the password while signed in',
-    description: 'Signs out every existing session and returns tokens for a new one.',
+    description:
+      'Signs out every existing session and returns tokens for a new one. After staff reset a password ' +
+      '(`user.mustChangePassword` is true), every other route answers 403 PASSWORD_CHANGE_REQUIRED until this succeeds.',
   })
   @ApiOkResponse({ type: AuthResponseDto })
   @ApiBadRequestResponse(error('VALIDATION_FAILED, PASSWORD_REUSED'))
@@ -204,6 +209,7 @@ export class AuthController {
   }
 
   @Get('me')
+  @AllowPendingPasswordChange()
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Return the signed-in user' })
   @ApiOkResponse({ type: AuthUserDto })

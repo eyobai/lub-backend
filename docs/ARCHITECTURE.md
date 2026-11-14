@@ -35,7 +35,7 @@ Rules that hold everywhere:
 
 ## 2. Request pipeline
 
-`helmet` → CORS allow-list → rate limiter (Redis-backed, per IP) → JWT guard → roles guard →
+`helmet` → CORS allow-list → rate limiter (Redis-backed, per IP) → JWT guard → password-change guard → roles guard →
 validation pipe (unknown fields rejected) → controller → service → Prisma.
 
 Every error leaves through one filter and has one shape:
@@ -80,13 +80,14 @@ src/
     results/                             winner calculation, auction results, result re-check
     winners/                             winner verification, publishing, prize delivery
     notifications/                       in-app notifications, provider abstraction, dispatch job
+    admin/                               user management, staff password reset, audit viewer, dashboard
     auth/                                registration, login, tokens, password recovery
   scripts/seed-admin.ts                  bootstrap SUPER_ADMIN
 prisma/schema.prisma, prisma/migrations  schema and SQL migrations
 test/                                    integration tests against real PostgreSQL + Redis
 ```
 
-Planned modules, one per phase: `payments`, `admin`.
+Planned module: `payments`.
 
 ## 4. Authentication
 
@@ -177,6 +178,34 @@ A cannot use B's code to finish with A's password.
 access tokens. Roles: `USER`, `SUPPORT`, `FINANCE`, `ADMIN`, `SUPER_ADMIN` (many-to-many, with
 who granted each role). Clients can never set a role or status: unknown request fields are
 rejected.
+
+### Admin management
+
+- **Who may manage whom:** nobody can act on their own account, and only a `SUPER_ADMIN` can
+  suspend, block, reset, sign out or change the roles of an account holding a back-office role.
+  The acting account's status and roles are read again inside the transaction, and all account
+  changes are serialized by one advisory lock, so two racing requests cannot bypass the rule.
+  Together these keep at least one active `SUPER_ADMIN`: a staff account can only be changed by
+  a different, active `SUPER_ADMIN`, who is still one afterwards.
+- **Status:** suspend, block and reactivate need a reason, revoke every session (suspend and
+  block) and write an audit record with the status before and after.
+- **Roles:** `PUT /admin/users/:id/roles` replaces the account's whole set of back-office roles,
+  records who granted them and revokes the account's sessions, so the change applies at once.
+  `USER` is never granted or removed here.
+- **Staff password reset:** generates a 14-character temporary password, stores only its
+  Argon2id hash, returns it once, revokes every session, clears the sign-in lockout and sets
+  `users.must_change_password`. The password is in no audit record, security event, log or
+  notification. The owner gets an in-app notification that a reset happened.
+- **Forced change:** while `must_change_password` is set, a global guard answers
+  `403 PASSWORD_CHANGE_REQUIRED` on every route except `GET /auth/me`,
+  `POST /auth/change-password` and `POST /auth/logout-all`. Changing the password clears it; the
+  temporary password is refused as the new one.
+- **Audit viewer:** read-only. Audit records filter by actor, action prefix (`user.` matches
+  every user action), entity and period; security events by type, user, phone and period.
+- **Dashboard:** all figures are read in one `REPEATABLE READ` transaction, so they describe the
+  same instant. Revenue per currency is the balance of the platform revenue ledger account (bid
+  fees credit it, refunds debit it); the 24-hour, 7-day and 30-day figures are the net of its
+  ledger lines in that period.
 
 ## 5. Database design
 
@@ -455,12 +484,17 @@ See `.env.example` for the full list.
   events completing when the notification cannot be written, and a fake external provider for
   filtering by type, retries, giving up, concurrent dispatchers and the background job.
 
+  Admin tests cover the user list, search and filters, each status change and its effect on
+  sessions, privilege escalation (staff acting on staff, self-management, self-granted roles,
+  two SUPER_ADMINs demoting each other at once), role assignment, the staff password reset and
+  the forced change, where the temporary password is stored, audit and security-event filters,
+  dashboard figures including refunds, auction statistics and role checks on every route.
+
 ## 9. Not built yet / decisions needed
 
-- Payments (user deposits, provider callbacks), withdrawals, and the rest of the admin APIs.
+- Payments (user deposits, provider callbacks) and withdrawals.
 - SMS, email or push delivery of notifications: the abstraction exists, no provider does.
 - What happens to the prize and the fees when a winner is rejected.
 - The `EXTEND_AUCTION` no-unique-bid policy.
 - Product image upload: images are external URLs for now.
-- Staff-driven password reset: needed because SMS reset is off by default.
 - Real-money payments and public paid auctions must wait for legal and regulatory review.
