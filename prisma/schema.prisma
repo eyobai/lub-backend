@@ -483,34 +483,35 @@ enum NoUniqueBidPolicy {
 }
 
 model Auction {
-  id                 String             @id @default(uuid()) @db.Uuid
-  productId          String             @map("product_id") @db.Uuid
-  title              String             @db.VarChar(200)
-  description        String?
-  currency           String             @db.Char(3)
-  bidFeeMinor        BigInt             @map("bid_fee_minor")
-  minBidMinor        BigInt             @map("min_bid_minor")
-  maxBidMinor        BigInt             @map("max_bid_minor")
-  bidStepMinor       BigInt             @default(1) @map("bid_step_minor") // allowed amount granularity
-  maxBidsPerUser     Int?               @map("max_bids_per_user")
-  maxBidsPerRequest  Int                @default(50) @map("max_bids_per_request")
-  opensAt            DateTime           @map("opens_at") @db.Timestamptz(3)
-  closesAt           DateTime           @map("closes_at") @db.Timestamptz(3)
-  status             AuctionStatus      @default(DRAFT)
-  duplicateBidPolicy DuplicateBidPolicy @default(REJECT_SAME_USER_SAME_AMOUNT) @map("duplicate_bid_policy")
-  noUniqueBidPolicy  NoUniqueBidPolicy? @map("no_unique_bid_policy")
-  totalBidCount      Int                @default(0) @map("total_bid_count")
-  version            Int                @default(0)
-  createdById        String?            @map("created_by_id") @db.Uuid
-  activatedAt        DateTime?          @map("activated_at") @db.Timestamptz(3)
-  closedAt           DateTime?          @map("closed_at") @db.Timestamptz(3)
-  completedAt        DateTime?          @map("completed_at") @db.Timestamptz(3)
-  cancelledAt        DateTime?          @map("cancelled_at") @db.Timestamptz(3)
-  cancelReason       String?            @map("cancel_reason")
+  id                    String             @id @default(uuid()) @db.Uuid
+  productId             String             @map("product_id") @db.Uuid
+  title                 String             @db.VarChar(200)
+  description           String?
+  currency              String             @db.Char(3)
+  bidFeeMinor           BigInt             @map("bid_fee_minor")
+  minBidMinor           BigInt             @map("min_bid_minor")
+  maxBidMinor           BigInt             @map("max_bid_minor")
+  bidStepMinor          BigInt             @default(1) @map("bid_step_minor") // allowed amount granularity
+  maxBidsPerUser        Int?               @map("max_bids_per_user")
+  maxBidsPerRequest     Int                @default(50) @map("max_bids_per_request")
+  opensAt               DateTime           @map("opens_at") @db.Timestamptz(3)
+  closesAt              DateTime           @map("closes_at") @db.Timestamptz(3)
+  status                AuctionStatus      @default(DRAFT)
+  duplicateBidPolicy    DuplicateBidPolicy @default(REJECT_SAME_USER_SAME_AMOUNT) @map("duplicate_bid_policy")
+  noUniqueBidPolicy     NoUniqueBidPolicy? @map("no_unique_bid_policy")
+  totalBidCount         Int                @default(0) @map("total_bid_count")
+  version               Int                @default(0)
+  createdById           String?            @map("created_by_id") @db.Uuid
+  activatedAt           DateTime?          @map("activated_at") @db.Timestamptz(3)
+  closedAt              DateTime?          @map("closed_at") @db.Timestamptz(3)
+  completedAt           DateTime?          @map("completed_at") @db.Timestamptz(3)
+  cancelledAt           DateTime?          @map("cancelled_at") @db.Timestamptz(3)
+  cancelReason          String?            @map("cancel_reason")
   // Set once every bid fee has been refunded (cancelled, or no unique bid under REFUND_BID_FEES).
-  bidFeesRefundedAt  DateTime?          @map("bid_fees_refunded_at") @db.Timestamptz(3)
-  createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt          DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+  bidFeesRefundedAt     DateTime?          @map("bid_fees_refunded_at") @db.Timestamptz(3)
+  closingReminderSentAt DateTime?          @map("closing_reminder_sent_at") @db.Timestamptz(3)
+  createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   product        Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
   createdBy      User?           @relation("AuctionCreator", fields: [createdById], references: [id], onDelete: SetNull)
@@ -708,19 +709,20 @@ enum NotificationStatus {
 }
 
 model Notification {
-  id        String              @id @default(uuid()) @db.Uuid
-  userId    String              @map("user_id") @db.Uuid
-  type      NotificationType
-  channel   NotificationChannel
-  status    NotificationStatus  @default(PENDING)
-  title     String              @db.VarChar(200)
-  body      String
-  data      Json?
-  attempts  Int                 @default(0)
-  lastError String?             @map("last_error")
-  sentAt    DateTime?           @map("sent_at") @db.Timestamptz(3)
-  readAt    DateTime?           @map("read_at") @db.Timestamptz(3)
-  createdAt DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  id            String              @id @default(uuid()) @db.Uuid
+  userId        String              @map("user_id") @db.Uuid
+  type          NotificationType
+  channel       NotificationChannel
+  status        NotificationStatus  @default(PENDING)
+  title         String              @db.VarChar(200)
+  body          String
+  data          Json?
+  attempts      Int                 @default(0)
+  lastError     String?             @map("last_error")
+  nextAttemptAt DateTime?           @map("next_attempt_at") @db.Timestamptz(3)
+  sentAt        DateTime?           @map("sent_at") @db.Timestamptz(3)
+  readAt        DateTime?           @map("read_at") @db.Timestamptz(3)
+  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

@@ -1,6 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { ActorType } from '@prisma/client';
+import { APP_CONFIG } from '../../config/configuration';
+import type { AppConfig } from '../../config/configuration';
 import { PrismaService } from '../../infra/prisma/prisma.service';
+import { closingReminder } from '../notifications/notification-templates';
+import { NotificationsService } from '../notifications/notifications.service';
 
 export interface LifecycleSweep {
   /** Auctions opened for bidding (SCHEDULED → ACTIVE). */
@@ -11,7 +15,11 @@ export interface LifecycleSweep {
 
 @Injectable()
 export class AuctionLifecycleService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
+  ) {}
 
   /**
    * Opens every scheduled auction whose opening time has come and closes bidding on every active auction whose
@@ -40,6 +48,29 @@ export class AuctionLifecycleService {
       if (records.length > 0) await tx.auditLog.createMany({ data: records });
 
       return { activated: activated.map((r) => r.id), closing: closing.map((r) => r.id) };
+    });
+  }
+
+  /**
+   * Reminds the bidders of every running auction that closes within the configured time. Each auction is
+   * reminded once: the auction row records it in the same transaction as the notifications. An auction
+   * shorter than the reminder time gets no reminder.
+   */
+  async sendClosingReminders(): Promise<string[]> {
+    const minutes = this.config.auctions.closingReminderMinutes;
+    if (minutes <= 0) return [];
+    return this.prisma.$transaction(async (tx) => {
+      const due = await tx.$queryRaw<{ id: string; title: string; closes_at: Date }[]>`
+        UPDATE auctions
+        SET closing_reminder_sent_at = now()
+        WHERE status = 'ACTIVE'::"AuctionStatus" AND closing_reminder_sent_at IS NULL
+          AND closes_at > now() AND closes_at <= now() + make_interval(mins => ${minutes}::int)
+          AND closes_at - make_interval(mins => ${minutes}::int) >= COALESCE(activated_at, opens_at)
+        RETURNING id, title, closes_at`;
+      for (const auction of due) {
+        await this.notifications.notifyBidders(tx, auction.id, closingReminder(auction, auction.closes_at, minutes));
+      }
+      return due.map((auction) => auction.id);
     });
   }
 }

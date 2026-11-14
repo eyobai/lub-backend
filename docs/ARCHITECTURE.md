@@ -3,8 +3,9 @@
 Backend for a Lowest Unique Bid (LUB) auction platform. Users pay a fixed fee per bid; when an
 auction closes, the lowest amount that was submitted exactly once wins.
 
-Status: **Phase 1** (project setup, full database schema, authentication) is implemented.
-Later phases are designed here and in the schema, but not yet coded.
+Status: authentication, wallet and ledger, products and auctions, bidding, winner calculation,
+winners and prize delivery, and notifications are implemented. What is left is listed in
+section 9.
 
 ## 1. Shape of the system
 
@@ -17,8 +18,8 @@ Client ──HTTPS──> NestJS API ──> PostgreSQL   source of truth: users
                      │
                      ├─────────> Redis        rate limits, login lockouts, revoked sessions, BullMQ
                      │
-                     └─ BullMQ workers        auction open/close, winner calculation, notifications,
-                                              payment reconciliation (later phases)
+                     └─ BullMQ workers        auction open/close, winner calculation, notifications;
+                                              payment reconciliation (later phase)
 ```
 
 Rules that hold everywhere:
@@ -78,13 +79,14 @@ src/
     bidding/                             placing bids, bid history, bid-fee refunds
     results/                             winner calculation, auction results, result re-check
     winners/                             winner verification, publishing, prize delivery
+    notifications/                       in-app notifications, provider abstraction, dispatch job
     auth/                                registration, login, tokens, password recovery
   scripts/seed-admin.ts                  bootstrap SUPER_ADMIN
 prisma/schema.prisma, prisma/migrations  schema and SQL migrations
 test/                                    integration tests against real PostgreSQL + Redis
 ```
 
-Planned modules, one per phase: `payments`, `notifications`, `admin`.
+Planned modules, one per phase: `payments`, `admin`.
 
 ## 4. Authentication
 
@@ -359,6 +361,32 @@ can also trigger it. Finalization is one database transaction:
   `PENDING` or `CONTACTED`; after that only SUPPORT or ADMIN can change them.
 - Every action row-locks the winner, and writes an audit record with before/after values.
 
+### Notifications
+
+- **Recording:** a notification is written inside the transaction of the event it reports (bid,
+  wallet credit, result, cancellation, winner action, delivery step), so it exists exactly when
+  the event does: a rolled-back or replayed request leaves none behind. The write runs in a
+  savepoint; if it fails, only the notification is lost and the event still commits.
+- **Events:** bid confirmation, low balance (the balance no longer covers one bid fee), wallet
+  credit, closing reminder, auction result (won, lost, no unique bid, cancelled), winner
+  verified or rejected, and each prize delivery step.
+- **Closing reminder:** the lifecycle job reminds each bidder of an `ACTIVE` auction once,
+  `AUCTION_CLOSING_REMINDER_MINUTES` before it closes. Auctions shorter than that get none.
+  `auctions.closing_reminder_sent_at` is set in the same statement that selects the auction, so
+  concurrent workers send one reminder.
+- **Privacy:** a user reads and marks only their own in-app rows; another user's ID answers
+  `404`. Text and `data` carry no bid amounts, no other bidder, no staff note and no rejection
+  reason. Losing bidders get the winning amount, which is already public, not the winner.
+- **Channels:** `IN_APP` rows are the inbox. SMS, email and push are `NotificationProvider`
+  implementations registered under `NOTIFICATION_PROVIDERS`; each one chooses the types it
+  accepts and gets its own `PENDING` row per notification. None is registered, so nothing is
+  sent outside the system.
+- **Dispatch:** a BullMQ job (`NOTIFICATION_DISPATCH_INTERVAL_SECONDS`) sends `PENDING` rows of
+  external channels. Each row is locked with `FOR UPDATE SKIP LOCKED`, so concurrent workers do
+  not send it twice. A failure is retried after 1, 5, 30 and 120 minutes and marked `FAILED`
+  after 5 attempts. Delivery is at least once: a crash between sending and recording can repeat
+  a message.
+
 ### Bids and results
 
 - `bid_submissions` is one paid request (one or many amounts, one fee total, one ledger
@@ -422,10 +450,15 @@ See `.env.example` for the full list.
   and the public list, every delivery step and its requirements, the winner's own delivery
   details, audit records and role checks.
 
+  Notification tests cover every event and its wording, privacy between users and towards
+  losing bidders, paging and read state, replayed and concurrent requests, closing reminders,
+  events completing when the notification cannot be written, and a fake external provider for
+  filtering by type, retries, giving up, concurrent dispatchers and the background job.
+
 ## 9. Not built yet / decisions needed
 
-- Payments (user deposits, provider callbacks), withdrawals, notifications, and the rest of the
-  admin APIs.
+- Payments (user deposits, provider callbacks), withdrawals, and the rest of the admin APIs.
+- SMS, email or push delivery of notifications: the abstraction exists, no provider does.
 - What happens to the prize and the fees when a winner is rejected.
 - The `EXTEND_AUCTION` no-unique-bid policy.
 - Product image upload: images are external URLs for now.

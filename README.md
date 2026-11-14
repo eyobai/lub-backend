@@ -145,3 +145,17 @@ The winner is the lowest amount that was bid exactly once. If no amount is uniqu
 
 Delivery statuses: `PENDING` → `CONTACTED` → `VERIFIED` → `DISPATCHED` → `DELIVERED`, plus
 `DISPUTED`, which can be set from any status.
+
+## Notification endpoints
+
+| Method | Path                          | Auth   | Purpose                                               |
+| ------ | ----------------------------- | ------ | ----------------------------------------------------- |
+| GET    | `/notifications`              | Bearer | My notifications, newest first (`unreadOnly`, `type`) |
+| GET    | `/notifications/unread-count` | Bearer | How many I have not read                              |
+| POST   | `/notifications/:id/read`     | Bearer | Mark one as read                                      |
+| POST   | `/notifications/read-all`     | Bearer | Mark all as read                                      |
+
+Notifications are written for bid confirmations, low balance, wallet credits, closing reminders
+(`AUCTION_CLOSING_REMINDER_MINUTES`, default 60, `0` turns them off), auction results and
+cancellations, winner verification and prize delivery steps. They are stored in-app only: no SMS,
+email or push provider is registered, so nothing leaves the system.

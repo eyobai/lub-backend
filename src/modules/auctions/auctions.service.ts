@@ -8,6 +8,8 @@ import { formatMinor } from '../../common/utils/money';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { BidRefundService } from '../bidding/bid-refund.service';
+import { auctionCancelled } from '../notifications/notification-templates';
+import { NotificationsService } from '../notifications/notifications.service';
 import { productInclude, toProductSummary } from '../products/products.service';
 import { configProblems, EDITABLE_STATUSES, readinessProblems } from './auction-rules';
 import { PUBLIC_AUCTION_STATUSES } from './dto/auction.dto';
@@ -122,6 +124,7 @@ export class AuctionsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly refunds: BidRefundService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   // ── Public ─────────────────────────────────────────────────────────────────
@@ -347,6 +350,7 @@ export class AuctionsService {
           version: { increment: 1 },
         },
       });
+      if (before.totalBidCount > 0) await this.notifications.notifyBidders(tx, id, auctionCancelled(before));
       return this.finish(tx, before, 'auction.cancel', actorId, client, {
         reason,
         totalBidCount: before.totalBidCount,

@@ -45,6 +45,12 @@ export class AuctionLifecycleProcessor extends WorkerHost implements OnApplicati
     if (result.activated.length > 0 || result.closing.length > 0) {
       this.logger.log({ activated: result.activated, closing: result.closing }, 'Auction lifecycle sweep');
     }
+    try {
+      const reminded = await this.lifecycle.sendClosingReminders();
+      if (reminded.length > 0) this.logger.log({ reminded }, 'Closing reminders sent');
+    } catch (error) {
+      this.logger.error({ err: error }, 'Sending closing reminders failed; it will be retried');
+    }
     const finalized = await this.results.finalizeDue();
     if (finalized.length > 0) this.logger.log({ finalized }, 'Auctions finalized');
     await this.refunds.refundPending();

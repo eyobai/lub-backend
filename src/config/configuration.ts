@@ -32,7 +32,13 @@ export interface AppConfig {
   phone: { allowedCountries: CountryCode[]; defaultCountry: CountryCode; verificationRequired: boolean };
   throttle: { ttlSeconds: number; limit: number; authLimit: number };
   /** How often due auctions are opened/closed, in seconds. 0 turns the background sweep off. */
-  auctions: { sweepIntervalSeconds: number };
+  auctions: {
+    sweepIntervalSeconds: number;
+    /** How long before closing bidders are reminded, in minutes. 0 turns reminders off. */
+    closingReminderMinutes: number;
+  };
+  /** How often pending SMS/email/push notifications are sent, in seconds. 0 turns the background job off. */
+  notifications: { dispatchIntervalSeconds: number };
 }
 
 /** Builds the typed config from already-validated environment variables. */
@@ -89,7 +95,11 @@ export function configuration(): { app: AppConfig } {
         limit: num('THROTTLE_LIMIT', 120),
         authLimit: num('AUTH_THROTTLE_LIMIT', 10),
       },
-      auctions: { sweepIntervalSeconds: num('AUCTION_SWEEP_INTERVAL_SECONDS', 5) },
+      auctions: {
+        sweepIntervalSeconds: num('AUCTION_SWEEP_INTERVAL_SECONDS', 5),
+        closingReminderMinutes: num('AUCTION_CLOSING_REMINDER_MINUTES', 60),
+      },
+      notifications: { dispatchIntervalSeconds: num('NOTIFICATION_DISPATCH_INTERVAL_SECONDS', 10) },
     },
   };
 }

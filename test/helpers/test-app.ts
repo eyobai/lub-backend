@@ -8,6 +8,8 @@ import { AppModule } from '../../src/app.module';
 import { configureApp } from '../../src/app.setup';
 import { PrismaService } from '../../src/infra/prisma/prisma.service';
 import { REDIS_CLIENT } from '../../src/infra/redis/redis.module';
+import { NOTIFICATION_PROVIDERS } from '../../src/modules/notifications/notification.types';
+import type { NotificationProvider } from '../../src/modules/notifications/notification.types';
 import { OTP_SENDER, OtpMessage, OtpSender } from '../../src/modules/otp/senders/otp-sender.interface';
 
 /** Stands in for an SMS provider: records messages so tests can read the code "from the phone". */
@@ -50,7 +52,10 @@ export interface TestApp {
 }
 
 /** Boots the real application (real PostgreSQL + Redis); only SMS delivery is replaced. */
-export async function createTestApp(envOverrides: Record<string, string> = {}): Promise<TestApp> {
+export async function createTestApp(
+  envOverrides: Record<string, string> = {},
+  notificationProviders: NotificationProvider[] = [],
+): Promise<TestApp> {
   const previous: Record<string, string | undefined> = {};
   for (const [key, value] of Object.entries(envOverrides)) {
     previous[key] = process.env[key];
@@ -61,6 +66,8 @@ export async function createTestApp(envOverrides: Record<string, string> = {}): 
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(OTP_SENDER)
     .useValue(sms)
+    .overrideProvider(NOTIFICATION_PROVIDERS)
+    .useValue(notificationProviders)
     .compile();
   const app = moduleRef.createNestApplication<INestApplication<App>>();
   const config = configureApp(app);

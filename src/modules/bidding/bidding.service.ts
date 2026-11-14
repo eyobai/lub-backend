@@ -10,6 +10,8 @@ import { formatMinor } from '../../common/utils/money';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { LEDGER_TX_OPTIONS } from '../ledger/ledger.service';
+import { bidSubmitted, lowBalance } from '../notifications/notification-templates';
+import { NotificationsService } from '../notifications/notifications.service';
 import { WalletService } from '../wallet/wallet.service';
 import type {
   AdminBidPageDto,
@@ -67,6 +69,7 @@ export class BiddingService {
     private readonly prisma: PrismaService,
     private readonly wallets: WalletService,
     private readonly audit: AuditService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /**
@@ -210,6 +213,17 @@ export class BiddingService {
       await tx.$executeRaw`UPDATE auctions SET total_bid_count = total_bid_count + ${count} WHERE id = ${auctionId}::uuid`;
 
       const submission = await tx.bidSubmission.findUniqueOrThrow({ where: { id }, include: submissionInclude });
+
+      const money = (amountMinor: bigint) => ({
+        amountMinor,
+        currency: auction.currency,
+        minorUnits: submission.auction.currencyRef.minorUnits,
+      });
+      await this.notifications.notify(tx, user.id, bidSubmitted(auction, id, count, money(totalFeeMinor)));
+      const balanceMinor = submission.walletTransaction.entries[0]?.balanceAfterMinor;
+      if (balanceMinor !== undefined && balanceMinor < auction.bidFeeMinor) {
+        await this.notifications.notify(tx, user.id, lowBalance(money(balanceMinor), money(auction.bidFeeMinor)));
+      }
       return { submission: toSubmissionDto(submission), replayed: false };
     }, LEDGER_TX_OPTIONS);
   }

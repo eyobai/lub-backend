@@ -19,6 +19,7 @@ import { AuctionsModule } from './modules/auctions/auctions.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BiddingModule } from './modules/bidding/bidding.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ResultsModule } from './modules/results/results.module';
 import { CurrencyModule } from './modules/currency/currency.module';
 import { HealthModule } from './modules/health/health.module';
@@ -88,6 +89,7 @@ function prettyLogs(config: AppConfig): boolean {
     ProductsModule,
     AuctionsModule,
     BiddingModule,
+    NotificationsModule,
     ResultsModule,
     WinnersModule,
   ],

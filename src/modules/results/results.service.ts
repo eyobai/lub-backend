@@ -9,6 +9,8 @@ import { AuditService } from '../audit/audit.service';
 import { SUPPORTED_NO_UNIQUE_BID_POLICIES } from '../auctions/auction-policies';
 import { BidRefundService } from '../bidding/bid-refund.service';
 import { LEDGER_TX_OPTIONS } from '../ledger/ledger.service';
+import { auctionEndedWithoutWinner, auctionEndedWithWinner, auctionWon } from '../notifications/notification-templates';
+import { NotificationsService } from '../notifications/notifications.service';
 import { MyBidOutcome } from './dto/result.dto';
 import type {
   AdminAuctionResultDto,
@@ -66,6 +68,7 @@ export class ResultsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly refunds: BidRefundService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /**
@@ -81,7 +84,10 @@ export class ResultsService {
         { id: string }[]
       >`SELECT id FROM auctions WHERE id = ${auctionId}::uuid FOR UPDATE`;
       if (locked.length === 0) throw notFound();
-      const auction = await tx.auction.findUniqueOrThrow({ where: { id: auctionId } });
+      const auction = await tx.auction.findUniqueOrThrow({
+        where: { id: auctionId },
+        include: { currencyRef: { select: { minorUnits: true } } },
+      });
       if (auction.status === AuctionStatus.COMPLETED) return null;
 
       const [{ now }] = await tx.$queryRaw<{ now: Date }[]>`SELECT clock_timestamp() AS now`;
@@ -137,7 +143,7 @@ export class ResultsService {
         },
       });
       if (winningBid) {
-        await tx.winner.create({
+        const winner = await tx.winner.create({
           data: {
             auctionId,
             userId: winningBid.userId,
@@ -146,6 +152,22 @@ export class ResultsService {
             currency: auction.currency,
           },
         });
+        const amount = {
+          amountMinor: winningBid.amountMinor,
+          currency: auction.currency,
+          minorUnits: auction.currencyRef.minorUnits,
+        };
+        await this.notifications.notify(tx, winningBid.userId, auctionWon(auction, winner.id, amount));
+        // The winning amount is public once the auction ends; who bid it is not part of the message.
+        await this.notifications.notifyBidders(tx, auctionId, auctionEndedWithWinner(auction, amount), [
+          winningBid.userId,
+        ]);
+      } else if (appliedNoUniquePolicy) {
+        await this.notifications.notifyBidders(
+          tx,
+          auctionId,
+          auctionEndedWithoutWinner(auction, appliedNoUniquePolicy),
+        );
       }
       await tx.auction.update({
         where: { id: auctionId },

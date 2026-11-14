@@ -9,6 +9,8 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CurrencyService } from '../currency/currency.service';
 import { LedgerService } from '../ledger/ledger.service';
+import { walletCredited } from '../notifications/notification-templates';
+import { NotificationsService } from '../notifications/notifications.service';
 import type { PostingResult, Tx } from '../ledger/ledger.types';
 import type {
   AdjustWalletDto,
@@ -53,6 +55,7 @@ export class WalletService {
     private readonly ledger: LedgerService,
     private readonly audit: AuditService,
     private readonly currencies: CurrencyService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   // ── Queries ────────────────────────────────────────────────────────────────
@@ -180,6 +183,7 @@ export class WalletService {
           },
           client,
         });
+        await this.notifyCredited(tx, userId, result, available.id, currency);
       }
       return { transaction: await this.entryDto(tx, result.transaction.id, currency), replayed: result.replayed };
     });
@@ -205,8 +209,9 @@ export class WalletService {
         'Only manual adjustments can be reversed here',
       );
     }
-    const wallet = original.entries.find((e) => e.account.type === LedgerAccountType.USER_WALLET)?.account.wallet;
-    if (!wallet) throw new Error(`Adjustment ${original.reference} has no wallet line`);
+    const walletEntry = original.entries.find((e) => e.account.type === LedgerAccountType.USER_WALLET);
+    const wallet = walletEntry?.account.wallet;
+    if (!walletEntry || !wallet) throw new Error(`Adjustment ${original.reference} has no wallet line`);
     this.assertNotOwnWallet(actorId, wallet.userId);
     const currency = await this.resolveCurrency(original.currency, true);
 
@@ -233,6 +238,8 @@ export class WalletService {
           },
           client,
         });
+        // Reversing a debit gives the money back.
+        await this.notifyCredited(tx, wallet.userId, result, walletEntry.accountId, currency);
       }
       return { transaction: await this.entryDto(tx, result.transaction.id, currency), replayed: result.replayed };
     });
@@ -318,7 +325,7 @@ export class WalletService {
     return this.ledger.run(async (t) => {
       const { available } = await this.ensureWallet(movement.userId, currency.code, t);
       const other = await this.ledger.systemAccount(counterpart, currency.code, t);
-      return this.ledger.post(
+      const result = await this.ledger.post(
         {
           type,
           currency: currency.code,
@@ -337,7 +344,29 @@ export class WalletService {
         },
         t,
       );
+      if (type === WalletTransactionType.DEPOSIT && !result.replayed) {
+        await this.notifyCredited(t, movement.userId, result, available.id, currency);
+      }
+      return result;
     }, tx);
+  }
+
+  /** Tells the user money arrived, if this posting credited the wallet. Refunds are announced by the auction that caused them, not one by one. */
+  private notifyCredited(
+    tx: Tx,
+    userId: string,
+    result: PostingResult,
+    accountId: string,
+    currency: Currency,
+  ): Promise<void> {
+    const entry = result.transaction.entries.find((e) => e.accountId === accountId);
+    if (entry?.direction !== CREDIT) return Promise.resolve();
+    const money = (amountMinor: bigint) => ({ amountMinor, currency: currency.code, minorUnits: currency.minorUnits });
+    return this.notifications.notify(
+      tx,
+      userId,
+      walletCredited(money(entry.amountMinor), money(entry.balanceAfterMinor), result.transaction.id),
+    );
   }
 
   private resolveCurrency(code?: string, allowInactive = false): Promise<Currency> {

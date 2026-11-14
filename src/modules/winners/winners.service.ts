@@ -7,6 +7,8 @@ import { AppException, ErrorCode } from '../../common/errors/app.exception';
 import { formatMinor } from '../../common/utils/money';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { deliveryUpdated, winRejected, winVerified } from '../notifications/notification-templates';
+import { NotificationsService } from '../notifications/notifications.service';
 import { ResultsService } from '../results/results.service';
 import { allowedNextStatuses, canMove, noteRequired, recipientRequired, winnerCanEditDetails } from './delivery-rules';
 import type {
@@ -44,6 +46,7 @@ const winnerInclude = {
 type WinnerWithRelations = Prisma.WinnerGetPayload<{ include: typeof winnerInclude }>;
 
 const notFound = () => new AppException(HttpStatus.NOT_FOUND, ErrorCode.NOT_FOUND, 'Winner not found');
+const auctionOf = (w: WinnerWithRelations) => ({ id: w.auctionId, title: w.auction.title });
 
 /** "+251911234567" → "+2519*****67": enough to recognize your own number, not enough to contact someone. */
 export const maskPhone = (phone: string): string =>
@@ -126,6 +129,7 @@ export class WinnersService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly results: ResultsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   // ── Public and winner-facing ───────────────────────────────────────────────
@@ -279,6 +283,7 @@ export class WinnersService {
           },
         });
       }
+      await this.notifications.notify(tx, before.userId, winVerified(auctionOf(before), id));
       return toAdminDto(await this.record(tx, before, 'winner.verify', actor));
     });
   }
@@ -297,6 +302,8 @@ export class WinnersService {
           verifiedAt: new Date(),
         },
       });
+      // The reason is an internal note; the winner is told only that the win was not confirmed.
+      await this.notifications.notify(tx, before.userId, winRejected(auctionOf(before), id));
       return toAdminDto(await this.record(tx, before, 'winner.reject', actor, ActorType.ADMIN, { reason }));
     });
   }
@@ -373,6 +380,12 @@ export class WinnersService {
           events: { create: { fromStatus: from, toStatus: dto.status, note: dto.note || null, actorId: actor.id } },
         },
       });
+      // Staff notes stay internal; the winner sees the new status (and tracking details once dispatched).
+      await this.notifications.notify(
+        tx,
+        before.userId,
+        deliveryUpdated(auctionOf(before), id, dto.status, delivery.trackingInfo),
+      );
       return toAdminDto(
         await this.record(tx, before, 'delivery.status', actor, ActorType.ADMIN, { from, to: dto.status }),
       );
