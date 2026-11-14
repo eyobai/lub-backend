@@ -1,4 +1,4 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { ActorType, AuctionStatus, ProductStatus } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
 import type { ClientInfo } from '../../common/decorators/client-info.decorator';
@@ -7,6 +7,7 @@ import { AppException, ErrorCode } from '../../common/errors/app.exception';
 import { formatMinor } from '../../common/utils/money';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { BidRefundService } from '../bidding/bid-refund.service';
 import { productInclude, toProductSummary } from '../products/products.service';
 import { configProblems, EDITABLE_STATUSES, readinessProblems } from './auction-rules';
 import { PUBLIC_AUCTION_STATUSES } from './dto/auction.dto';
@@ -83,6 +84,7 @@ function toAdminDto(a: AuctionWithRelations, serverTime: Date): AdminAuctionDto 
     completedAt: a.completedAt,
     cancelledAt: a.cancelledAt,
     cancelReason: a.cancelReason,
+    bidFeesRefundedAt: a.bidFeesRefundedAt,
     createdAt: a.createdAt,
     updatedAt: a.updatedAt,
   };
@@ -114,9 +116,12 @@ const notFound = () => new AppException(HttpStatus.NOT_FOUND, ErrorCode.NOT_FOUN
 
 @Injectable()
 export class AuctionsService {
+  private readonly logger = new Logger(AuctionsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly refunds: BidRefundService,
   ) {}
 
   // ── Public ─────────────────────────────────────────────────────────────────
@@ -325,19 +330,14 @@ export class AuctionsService {
     });
   }
 
-  cancel(actorId: string, id: string, reason: string, client: ClientInfo): Promise<AdminAuctionDto> {
-    return this.prisma.$transaction(async (tx) => {
+  /**
+   * DRAFT, SCHEDULED or ACTIVE → CANCELLED. The status change stops bidding at once; if bids had been
+   * placed, every bid fee is then returned to its bidder's wallet.
+   */
+  async cancel(actorId: string, id: string, reason: string, client: ClientInfo): Promise<AdminAuctionDto> {
+    const cancelled = await this.prisma.$transaction(async (tx) => {
       const before = await this.lock(tx, id);
       assertStatus(before, [...EDITABLE_STATUSES, AuctionStatus.ACTIVE], 'cancelled');
-      if (before.totalBidCount > 0) {
-        // Cancelling after bids were paid for must refund them; that arrives with the bidding module.
-        throw new AppException(
-          HttpStatus.CONFLICT,
-          ErrorCode.AUCTION_HAS_BIDS,
-          'This auction already has bids, so it cannot be cancelled without refunding them',
-          { totalBidCount: before.totalBidCount },
-        );
-      }
       await tx.auction.update({
         where: { id },
         data: {
@@ -347,8 +347,20 @@ export class AuctionsService {
           version: { increment: 1 },
         },
       });
-      return this.finish(tx, before, 'auction.cancel', actorId, client, { reason });
+      return this.finish(tx, before, 'auction.cancel', actorId, client, {
+        reason,
+        totalBidCount: before.totalBidCount,
+      });
     });
+    if (cancelled.totalBidCount === 0) return cancelled;
+
+    // The cancellation is committed. If refunding is interrupted, the background job finishes it.
+    try {
+      await this.refunds.refundAuction(id);
+    } catch (error) {
+      this.logger.error({ err: error, auctionId: id }, 'Refunding bid fees failed; the background job will retry');
+    }
+    return this.get(id);
   }
 
   // ── Internals ──────────────────────────────────────────────────────────────

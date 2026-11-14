@@ -75,13 +75,14 @@ src/
     currency/                            resolves and validates the currency of a request
     products/                            product catalogue (back office)
     auctions/                            auction setup, lifecycle, public listing, open/close job
+    bidding/                             placing bids, bid history, refunds for cancelled auctions
     auth/                                registration, login, tokens, password recovery
   scripts/seed-admin.ts                  bootstrap SUPER_ADMIN
 prisma/schema.prisma, prisma/migrations  schema and SQL migrations
 test/                                    integration tests against real PostgreSQL + Redis
 ```
 
-Planned modules, one per phase: `payments`, `bidding`, `results` (winner calculation),
+Planned modules, one per phase: `payments`, `results` (winner calculation),
 `notifications`, `admin`.
 
 ## 4. Authentication
@@ -265,8 +266,9 @@ DRAFT ──schedule──▶ SCHEDULED ──opensAt (job) or activate──▶
 - Everything is editable in `DRAFT` and `SCHEDULED` (a scheduled auction must stay publishable).
   In `ACTIVE` only title and description can change, so the rules bidders paid under are fixed.
   From `CLOSING` on nothing can change.
-- Cancelling needs a reason and is refused once the auction has bids, because those fees would
-  have to be refunded; that path is built with bidding.
+- Cancelling needs a reason. It stops bidding in the same transaction; if bids exist, every bid
+  fee is then refunded (see Bidding).
+- The bid fee must be greater than zero: every bid request is backed by a ledger journal.
 - Every admin action row-locks the auction, bumps `version` and writes an audit record with
   before/after snapshots in the same transaction. Concurrent requests for the same transition
   succeed exactly once.
@@ -282,6 +284,33 @@ DRAFT ──schedule──▶ SCHEDULED ──opensAt (job) or activate──▶
 - Public visibility: `SCHEDULED`, `ACTIVE`, `CLOSING`, `COMPLETED`, plus `CANCELLED` auctions
   that had been open for bidding. Public responses omit internal fields (creator, version,
   product status, cancel reason).
+
+### Bidding
+
+`POST /auctions/:id/bids` runs as one database transaction:
+
+1. Take a per-(user, idempotency key) advisory lock and look for an earlier submission with that
+   key. Same auction and amounts: return it (`Idempotent-Replayed: true`). Different: reject.
+2. Row-lock the auction, then read the database clock. Bids are accepted only if the auction is
+   `ACTIVE` and `closesAt` is still ahead; a `SCHEDULED` auction whose opening time has passed is
+   opened on the spot. Time spent waiting for the lock counts against the deadline.
+3. Validate every amount against min, max and step, the per-request and per-user limits, and the
+   duplicate policy. Any failure rejects the whole request.
+4. Debit `fee × count` from the wallet through the ledger (fails on insufficient funds or a
+   frozen wallet), insert one `bid_submissions` row and one `bids` row per amount, and increase
+   the auction's bid count.
+
+Any failure rolls everything back, so money is never taken without bids and bids never exist
+without payment. The fee, range, status and deadline always come from the locked auction row;
+nothing but the amounts is read from the request. The auction row lock makes bids on one auction
+take turns and makes the close of bidding wait for, or shut out, a bid in flight.
+
+- Users can read only their own bids; public auction data carries only the bid count.
+- Staff accounts (any back-office role) cannot bid, because staff can list every bid.
+- **Refunds on cancellation:** after the cancellation commits, each paid bid request is credited
+  back once (`REFUND` journal keyed `bid-refund:<submission id>`), in batches of 100, and
+  `bid_fees_refunded_at` is set when none is left. The background job finishes any run that was
+  interrupted, so a refund is neither lost nor paid twice. Bids themselves stay on record.
 
 ### Bids and results
 
@@ -341,11 +370,15 @@ See `.env.example` for the full list.
   transition and its refusals, concurrent activation, product protection while an auction is
   live, the open/close sweep (including concurrent sweeps) and the background job itself.
 
+  Bidding tests cover single and multiple bids, all-or-nothing rejection, insufficient funds,
+  frozen wallets, duplicate bids, limits, idempotent and concurrent retries, the deadline,
+  simultaneous bidders, overdraft attempts, immutability, privacy and refunds on cancellation.
+
 ## 9. Not built yet / decisions needed
 
-- Payments (user deposits, provider callbacks), withdrawals, bidding, winner calculation
+- Payments (user deposits, provider callbacks), withdrawals, winner calculation
   (`CLOSING` → `COMPLETED`), notifications, and the rest of the admin APIs.
-- Cancelling an auction that has bids (needs bid-fee refunds) and the `EXTEND_AUCTION` policy.
+- The `EXTEND_AUCTION` no-unique-bid policy.
 - Product image upload: images are external URLs for now.
 - Staff-driven password reset: needed because SMS reset is off by default.
 - Real-money payments and public paid auctions must wait for legal and regulatory review.

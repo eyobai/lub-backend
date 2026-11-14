@@ -18,6 +18,7 @@ import { REDIS_CLIENT, RedisModule } from './infra/redis/redis.module';
 import { AuctionsModule } from './modules/auctions/auctions.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { BiddingModule } from './modules/bidding/bidding.module';
 import { CurrencyModule } from './modules/currency/currency.module';
 import { HealthModule } from './modules/health/health.module';
 import { PhoneModule } from './modules/phone/phone.module';
@@ -84,6 +85,7 @@ function prettyLogs(config: AppConfig): boolean {
     WalletModule,
     ProductsModule,
     AuctionsModule,
+    BiddingModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

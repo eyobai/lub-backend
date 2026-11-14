@@ -103,3 +103,14 @@ Auctions open and close by the database clock. A background job (every
 `AUCTION_SWEEP_INTERVAL_SECONDS`, default 5) moves `SCHEDULED` → `ACTIVE` at `opensAt` and
 `ACTIVE` → `CLOSING` at `closesAt`. `CLOSING` → `COMPLETED` arrives with winner calculation.
 Dates must carry a time zone, e.g. `2027-01-31T09:00:00+03:00`.
+
+## Bidding endpoints
+
+| Method | Path                         | Auth                    | Purpose                                              |
+| ------ | ---------------------------- | ----------------------- | ---------------------------------------------------- |
+| POST   | `/auctions/:id/bids`         | Bearer                  | Place one or several bids (`Idempotency-Key` header) |
+| GET    | `/bids/mine`                 | Bearer                  | My bids, newest first; `?auctionId=` narrows it      |
+| GET    | `/admin/auctions/:id/bids`   | SUPPORT, FINANCE, ADMIN | Every bid of an auction                              |
+
+`POST /auctions/:id/bids` takes `{ "amountsMinor": ["500", "1000"] }`. One fee is charged per amount,
+all or nothing. Staff accounts cannot bid. Cancelling an auction refunds every bid fee paid in it.

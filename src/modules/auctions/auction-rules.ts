@@ -28,7 +28,8 @@ export function configProblems(c: AuctionConfig): string[] {
   const problems: string[] = [];
   const tooLarge = (value: bigint) => value > MAX_AMOUNT_MINOR;
 
-  if (c.bidFeeMinor < 0n || tooLarge(c.bidFeeMinor)) problems.push('bidFeeMinor is out of range');
+  // Every bid is paid for: the fee is what the ledger journal behind a bid records.
+  if (c.bidFeeMinor <= 0n || tooLarge(c.bidFeeMinor)) problems.push('bidFeeMinor must be greater than zero');
   if (c.minBidMinor <= 0n || tooLarge(c.minBidMinor)) problems.push('minBidMinor must be greater than zero');
   if (c.bidStepMinor <= 0n || tooLarge(c.bidStepMinor)) problems.push('bidStepMinor must be greater than zero');
   if (tooLarge(c.maxBidMinor)) problems.push('maxBidMinor is out of range');

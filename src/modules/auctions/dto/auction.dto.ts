@@ -44,7 +44,7 @@ export class CreateAuctionDto {
   description?: string | null;
 
   @ApiProperty({ example: '7500', description: `Fee charged for each bid amount. ${MINOR}` })
-  @IsMinorAmount({ allowZero: true })
+  @IsMinorAmount()
   bidFeeMinor!: string;
 
   @ApiProperty({ example: '100', description: `Lowest amount a user may bid. ${MINOR}` })
@@ -125,7 +125,7 @@ export class UpdateAuctionDto {
 
   @ApiPropertyOptional({ example: '7500', description: MINOR })
   @IsUndefinable()
-  @IsMinorAmount({ allowZero: true })
+  @IsMinorAmount()
   bidFeeMinor?: string;
 
   @ApiPropertyOptional({ example: '100', description: MINOR })
@@ -342,6 +342,13 @@ export class AdminAuctionDto extends AuctionDto {
 
   @ApiProperty({ type: String, nullable: true })
   cancelReason!: string | null;
+
+  @ApiProperty({
+    type: Date,
+    nullable: true,
+    description: 'Set once every bid fee of a cancelled auction has been returned to its bidder',
+  })
+  bidFeesRefundedAt!: Date | null;
 
   @ApiProperty()
   createdAt!: Date;

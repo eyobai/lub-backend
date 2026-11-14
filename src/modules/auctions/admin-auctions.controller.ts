@@ -167,13 +167,14 @@ export class AdminAuctionsController {
   @ApiOperation({
     summary: 'Cancel an auction',
     description:
-      'Role: ADMIN. DRAFT, SCHEDULED or ACTIVE → CANCELLED, with a reason. An auction that already has bids ' +
-      'cannot be cancelled yet, because its bid fees would have to be refunded.',
+      'Role: ADMIN. DRAFT, SCHEDULED or ACTIVE → CANCELLED, with a reason. Bidding stops immediately and ' +
+      'every bid fee already paid is refunded to the bidder’s wallet; `bidFeesRefundedAt` is set when all ' +
+      'refunds are done.',
   })
   @ApiOkResponse({ type: AdminAuctionDto })
   @ApiBadRequestResponse(error('VALIDATION_FAILED'))
   @ApiNotFoundResponse(error('NOT_FOUND'))
-  @ApiConflictResponse(error('AUCTION_INVALID_STATE, AUCTION_HAS_BIDS'))
+  @ApiConflictResponse(error('AUCTION_INVALID_STATE'))
   cancel(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('id', ParseUUIDPipe) id: string,

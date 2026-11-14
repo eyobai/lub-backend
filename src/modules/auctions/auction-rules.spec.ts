@@ -15,14 +15,14 @@ describe('configProblems', () => {
     closesAt: at('2027-01-02T09:00:00Z'),
   };
 
-  it('accepts consistent rules, a free auction and a single allowed amount', () => {
+  it('accepts consistent rules and a single allowed amount', () => {
     expect(configProblems(valid)).toEqual([]);
-    expect(configProblems({ ...valid, bidFeeMinor: 0n })).toEqual([]);
     expect(configProblems({ ...valid, minBidMinor: 500n, maxBidMinor: 500n })).toEqual([]);
   });
 
   it.each<[string, Partial<AuctionConfig>, RegExp]>([
     ['a negative fee', { bidFeeMinor: -1n }, /bidFeeMinor/],
+    ['a zero fee', { bidFeeMinor: 0n }, /bidFeeMinor must be greater than zero/],
     ['an oversized fee', { bidFeeMinor: MAX_AMOUNT_MINOR + 1n }, /bidFeeMinor/],
     ['a zero minimum', { minBidMinor: 0n }, /minBidMinor must be greater than zero/],
     ['a zero step', { bidStepMinor: 0n }, /bidStepMinor/],

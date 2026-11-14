@@ -464,18 +464,6 @@ describe('Products and auctions', () => {
       const audit = await t.prisma.auditLog.findFirstOrThrow({ where: { action: 'auction.cancel', entityId: live } });
       expect(audit).toMatchObject({ actorId: admin.id, metadata: { reason: 'Supplier fell through' } });
     });
-
-    it('refuses to cancel an auction that already has bids', async () => {
-      const id = await createAuction();
-      await act(id, 'activate').expect(200);
-      await t.prisma.auction.update({ where: { id }, data: { totalBidCount: 3 } });
-
-      const res = await act(id, 'cancel', { reason: 'Changed our mind' });
-
-      expect(res.status).toBe(409);
-      expect(res.body.error).toBe('AUCTION_HAS_BIDS');
-      expect(await status(id)).toBe('ACTIVE');
-    });
   });
 
   describe('automatic opening and closing', () => {
