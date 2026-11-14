@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ActorType, AuctionStatus } from '@prisma/client';
+import { ActorType, AuctionOutcome, AuctionStatus, NoUniqueBidPolicy } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { LEDGER_TX_OPTIONS } from '../ledger/ledger.service';
@@ -14,7 +15,18 @@ export interface RefundRun {
   complete: boolean;
 }
 
-/** Returns the bid fees of a cancelled auction to the bidders' wallets. */
+/** Auctions whose bidders get their fees back: cancelled ones, and ones that ended with no unique bid under REFUND_BID_FEES. */
+const REFUND_DUE: Prisma.AuctionWhereInput = {
+  OR: [
+    { status: AuctionStatus.CANCELLED },
+    {
+      status: AuctionStatus.COMPLETED,
+      result: { outcome: AuctionOutcome.NO_UNIQUE_BID, appliedNoUniquePolicy: NoUniqueBidPolicy.REFUND_BID_FEES },
+    },
+  ],
+};
+
+/** Returns the bid fees of an auction to the bidders' wallets. */
 @Injectable()
 export class BidRefundService {
   private readonly logger = new Logger(BidRefundService.name);
@@ -26,7 +38,7 @@ export class BidRefundService {
   ) {}
 
   /**
-   * Refunds every paid bid request of a cancelled auction, one wallet credit per request, in batches.
+   * Refunds every paid bid request of an auction whose fees are due back, one wallet credit per request, in batches.
    * Safe to call repeatedly and from several instances: each request is refunded exactly once, and an
    * interrupted run is finished by the next call.
    */
@@ -39,10 +51,10 @@ export class BidRefundService {
     }
   }
 
-  /** Finishes refunds that a cancellation started but did not complete (e.g. the server stopped midway). */
+  /** Finishes refunds that were started but did not complete (e.g. the server stopped midway). */
   async refundPending(): Promise<void> {
     const auctions = await this.prisma.auction.findMany({
-      where: { status: AuctionStatus.CANCELLED, totalBidCount: { gt: 0 }, bidFeesRefundedAt: null },
+      where: { ...REFUND_DUE, totalBidCount: { gt: 0 }, bidFeesRefundedAt: null },
       select: { id: true },
       take: 10,
     });
@@ -50,7 +62,7 @@ export class BidRefundService {
       try {
         await this.refundAuction(id);
       } catch (error) {
-        this.logger.error({ err: error, auctionId: id }, 'Refunding a cancelled auction failed; it will be retried');
+        this.logger.error({ err: error, auctionId: id }, 'Refunding bid fees failed; it will be retried');
       }
     }
   }
@@ -61,10 +73,9 @@ export class BidRefundService {
         SELECT pg_try_advisory_xact_lock(hashtextextended(${`bid-refund:${auctionId}`}, 0)) AS locked`;
       if (!locked) return { refunded: 0, complete: false }; // another run is refunding this auction
 
-      const auction = await tx.auction.findUnique({ where: { id: auctionId } });
-      if (!auction || auction.status !== AuctionStatus.CANCELLED) {
-        throw new Error(`Auction ${auctionId} is not cancelled; its bid fees cannot be refunded`);
-      }
+      const auction = await tx.auction.findFirst({ where: { id: auctionId, ...REFUND_DUE } });
+      if (!auction) throw new Error(`The bid fees of auction ${auctionId} are not due for a refund`);
+      const cancelled = auction.status === AuctionStatus.CANCELLED;
       if (auction.bidFeesRefundedAt) return { refunded: 0, complete: true };
 
       const pending = await tx.$queryRaw<{ id: string; user_id: string; total_fee_minor: bigint }[]>`
@@ -82,7 +93,7 @@ export class BidRefundService {
             amountMinor: submission.total_fee_minor,
             currency: auction.currency,
             idempotencyKey: `bid-refund:${submission.id}`,
-            description: `Bid fee refund: "${auction.title}" was cancelled`,
+            description: `Bid fee refund: "${auction.title}" ${cancelled ? 'was cancelled' : 'ended without a unique bid'}`,
             metadata: { auctionId, bidSubmissionId: submission.id },
           },
           tx,
@@ -102,6 +113,7 @@ export class BidRefundService {
         entityType: 'auction',
         entityId: auctionId,
         metadata: {
+          reason: cancelled ? 'AUCTION_CANCELLED' : 'NO_UNIQUE_BID',
           submissions: totals._count,
           totalFeeMinor: (totals._sum.totalFeeMinor ?? 0n).toString(),
           currency: auction.currency,

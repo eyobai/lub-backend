@@ -552,7 +552,7 @@ describe('Bidding', () => {
       const user = await account(100000n);
       await bid(auctionId, user, ['500']).expect(201);
       const refundsService = t.app.get(BidRefundService);
-      await expect(refundsService.refundAuction(auctionId)).rejects.toThrow(/not cancelled/);
+      await expect(refundsService.refundAuction(auctionId)).rejects.toThrow(/not due for a refund/);
       expect(await balance(user)).toBe('92500');
 
       // Cancelled, but the server stopped before any refund was made.

@@ -47,6 +47,7 @@ export function buildOpenApiDocument(app: INestApplication) {
     .addTag('Wallet', 'Balance and transaction history of the signed-in user')
     .addTag('Auctions', 'Public auction listing and details')
     .addTag('Bids', 'Placing bids and my bid history')
+    .addTag('Results', 'Auction results')
     .addTag('Admin: Products', 'Back-office product catalogue')
     .addTag('Admin: Auctions', 'Back-office auction setup and lifecycle')
     .addTag('Admin: Wallets', 'Back-office wallet views, manual adjustments, freezing and ledger reconciliation')

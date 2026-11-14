@@ -5,13 +5,12 @@ import { PageQueryDto } from '../../../common/dto/page-query.dto';
 import { Trim } from '../../../common/utils/trim.transform';
 import { IsInstant, IsMinorAmount, IsUndefinable } from '../../../common/validators/validators';
 import { ProductSummaryDto } from '../../products/dto/product.dto';
+import { SUPPORTED_NO_UNIQUE_BID_POLICIES } from '../auction-policies';
 
 const MINOR = 'Integer amount in minor units (santim for ETB), as a string so large values keep full precision.';
 const DECIMAL = 'The same amount formatted in major units for display. Do not use it for arithmetic.';
 const INSTANT = 'ISO-8601 instant with a time zone, e.g. 2027-01-31T09:00:00+03:00.';
 
-/** EXTEND_AUCTION exists in the data model but needs extension rules that are not defined yet. */
-export const SUPPORTED_NO_UNIQUE_BID_POLICIES = [NoUniqueBidPolicy.NO_WINNER, NoUniqueBidPolicy.REFUND_BID_FEES];
 const NO_UNIQUE_DOC =
   'What happens if no amount was bid exactly once. NO_WINNER: the auction ends without a winner and fees are kept. ' +
   'REFUND_BID_FEES: it ends without a winner and every bid fee is refunded. Required before scheduling.';
@@ -346,7 +345,9 @@ export class AdminAuctionDto extends AuctionDto {
   @ApiProperty({
     type: Date,
     nullable: true,
-    description: 'Set once every bid fee of a cancelled auction has been returned to its bidder',
+    description:
+      'Set once every bid fee has been returned to its bidder, for a cancelled auction or one that ended ' +
+      'without a unique bid under the REFUND_BID_FEES policy',
   })
   bidFeesRefundedAt!: Date | null;
 

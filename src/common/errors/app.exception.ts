@@ -46,6 +46,7 @@ export enum ErrorCode {
   BID_AMOUNT_INVALID = 'BID_AMOUNT_INVALID',
   BID_LIMIT_EXCEEDED = 'BID_LIMIT_EXCEEDED',
   DUPLICATE_BID = 'DUPLICATE_BID',
+  RESULT_NOT_AVAILABLE = 'RESULT_NOT_AVAILABLE',
 }
 
 export class AppException extends HttpException {

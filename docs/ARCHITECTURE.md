@@ -75,14 +75,15 @@ src/
     currency/                            resolves and validates the currency of a request
     products/                            product catalogue (back office)
     auctions/                            auction setup, lifecycle, public listing, open/close job
-    bidding/                             placing bids, bid history, refunds for cancelled auctions
+    bidding/                             placing bids, bid history, bid-fee refunds
+    results/                             winner calculation, auction results, result re-check
     auth/                                registration, login, tokens, password recovery
   scripts/seed-admin.ts                  bootstrap SUPER_ADMIN
 prisma/schema.prisma, prisma/migrations  schema and SQL migrations
 test/                                    integration tests against real PostgreSQL + Redis
 ```
 
-Planned modules, one per phase: `payments`, `results` (winner calculation),
+Planned modules, one per phase: `payments`, `winners` (verification, prize delivery),
 `notifications`, `admin`.
 
 ## 4. Authentication
@@ -179,15 +180,15 @@ rejected.
 
 All tables exist from the first migration, so later phases add code rather than reshape data.
 
-| Area          | Tables                                                                                   |
-| ------------- | ---------------------------------------------------------------------------------------- |
+| Area          | Tables                                                                                                    |
+| ------------- | --------------------------------------------------------------------------------------------------------- |
 | Identity      | `users`, `user_profiles`, `roles`, `user_roles`, `refresh_tokens`, `otp_verifications`, `security_events` |
-| Money         | `currencies`, `wallets`, `ledger_accounts`, `ledger_entries`, `wallet_transactions`       |
-| Payments      | `payment_transactions`, `payment_provider_events`, `withdrawal_requests`                  |
-| Catalogue     | `products`, `product_images`                                                              |
-| Auctions      | `auctions`, `bid_submissions`, `bids`, `auction_results`, `winners`                       |
-| Fulfilment    | `prize_deliveries`, `prize_delivery_events`                                               |
-| Cross-cutting | `notifications`, `audit_logs`, `idempotency_records`, `system_settings`                   |
+| Money         | `currencies`, `wallets`, `ledger_accounts`, `ledger_entries`, `wallet_transactions`                       |
+| Payments      | `payment_transactions`, `payment_provider_events`, `withdrawal_requests`                                  |
+| Catalogue     | `products`, `product_images`                                                                              |
+| Auctions      | `auctions`, `bid_submissions`, `bids`, `auction_results`, `winners`                                       |
+| Fulfilment    | `prize_deliveries`, `prize_delivery_events`                                                               |
+| Cross-cutting | `notifications`, `audit_logs`, `idempotency_records`, `system_settings`                                   |
 
 ### Ledger (double entry)
 
@@ -278,7 +279,7 @@ DRAFT ──schedule──▶ SCHEDULED ──opensAt (job) or activate──▶
 - **Automatic transitions:** a repeating BullMQ job runs one sweep transaction that opens due
   `SCHEDULED` auctions and moves `ACTIVE` auctions past `closesAt` to `CLOSING`, each recorded
   in the audit log as a `SYSTEM` action. A transaction-level advisory lock keeps sweeps from
-  overlapping across instances. The sweep only bounds how late the *status* flips; the bidding
+  overlapping across instances. The sweep only bounds how late the _status_ flips; the bidding
   module must still compare the database clock with `closesAt` itself, so a bid can never be
   accepted after the deadline even if a sweep is late.
 - Public visibility: `SCHEDULED`, `ACTIVE`, `CLOSING`, `COMPLETED`, plus `CANCELLED` auctions
@@ -312,6 +313,34 @@ take turns and makes the close of bidding wait for, or shut out, a bid in flight
   `bid_fees_refunded_at` is set when none is left. The background job finishes any run that was
   interrupted, so a refund is neither lost nor paid twice. Bids themselves stay on record.
 
+### Winner calculation
+
+The background job finalizes every `CLOSING` auction right after the open/close sweep; an ADMIN
+can also trigger it. Finalization is one database transaction:
+
+1. Row-lock the auction. Placing a bid holds the same lock until it commits, so once the lock is
+   held every accepted bid is committed and visible, and any later bid finds the auction closed.
+2. If the auction is already `COMPLETED`, stop: a result is recorded once. The unique index on
+   `auction_results.auction_id` backs this at the database level.
+3. Refuse unless a supported no-unique-bid policy is set.
+4. Count the bids per amount with one SQL aggregation and pass the counts to a pure function
+   (`lowest-unique-bid.ts`): of the amounts bid exactly once, the smallest wins. The outcome is
+   `WINNER_FOUND`, `NO_UNIQUE_BID` or `NO_BIDS`. It depends only on the counts, never on bid
+   order, time or bidder, so the same bids always give the same result.
+5. Check that the number of bids counted equals the auction's bid counter; a mismatch aborts.
+6. Insert `auction_results` (counts per amount, SHA-256 of that input, algorithm version, last
+   bid sequence), insert `winners` when there is one (`PENDING_VERIFICATION`), set the auction
+   `COMPLETED` and write the audit record.
+
+- **No unique bid:** `NO_WINNER` keeps the fees. `REFUND_BID_FEES` returns every fee after the
+  result commits, through the same exactly-once refund path as cancellation. `NO_BIDS` and
+  `WINNER_FOUND` never refund.
+- **Re-check:** `GET /admin/auctions/:id/result/audit` recomputes the result from the bids on
+  record and compares it with the recorded one.
+- **Privacy:** the public result carries the outcome, winning amount and bid count. A signed-in
+  user also sees how each of their own bids fared. The winner's identity and the per-amount
+  counts are staff-only.
+
 ### Bids and results
 
 - `bid_submissions` is one paid request (one or many amounts, one fee total, one ledger
@@ -335,17 +364,10 @@ triggers on `ledger_entries`, `bids`, `bid_submissions`, `audit_logs` and `aucti
 
 ## 6. Planned concurrency design (later phases)
 
-- **Placing a bid** is one PostgreSQL transaction: lock the auction row, check status and time
-  against the database clock, insert the bids, debit the wallet through the ledger, commit. If
-  any step fails, nothing is charged and no bid exists.
-- **Idempotency:** bid, deposit and withdrawal requests carry an `Idempotency-Key`; the key and
-  a hash of the request are stored in `idempotency_records` in the same transaction, so a retry
-  returns the original result instead of charging twice.
 - **Payment callbacks** are stored raw in `payment_provider_events` with a unique provider
   event ID; a wallet is credited at most once per provider transaction.
-- **Closing an auction:** the lifecycle sweep (built) moves it to `CLOSING`, which blocks new
-  bids. A later job computes the result with one deterministic SQL aggregation and writes
-  `auction_results` and `winners` in one transaction, then sets `COMPLETED`.
+- **Deposits and withdrawals** will carry an `Idempotency-Key` like bids do, so a retry returns
+  the original result instead of moving money twice.
 
 ## 7. Configuration and environments
 
@@ -374,10 +396,14 @@ See `.env.example` for the full list.
   frozen wallets, duplicate bids, limits, idempotent and concurrent retries, the deadline,
   simultaneous bidders, overdraft attempts, immutability, privacy and refunds on cancellation.
 
+  Result tests cover the calculation (unit and end to end), each outcome and no-unique-bid
+  policy, exactly-once refunds, concurrent finalization, bids racing the close, immutability of
+  results, the re-check and role checks.
+
 ## 9. Not built yet / decisions needed
 
-- Payments (user deposits, provider callbacks), withdrawals, winner calculation
-  (`CLOSING` → `COMPLETED`), notifications, and the rest of the admin APIs.
+- Payments (user deposits, provider callbacks), withdrawals, winner verification and
+  publishing, prize delivery, notifications, and the rest of the admin APIs.
 - The `EXTEND_AUCTION` no-unique-bid policy.
 - Product image upload: images are external URLs for now.
 - Staff-driven password reset: needed because SMS reset is off by default.

@@ -507,7 +507,7 @@ model Auction {
   completedAt        DateTime?          @map("completed_at") @db.Timestamptz(3)
   cancelledAt        DateTime?          @map("cancelled_at") @db.Timestamptz(3)
   cancelReason       String?            @map("cancel_reason")
-  // Set once every bid fee of a cancelled auction has been refunded.
+  // Set once every bid fee has been refunded (cancelled, or no unique bid under REFUND_BID_FEES).
   bidFeesRefundedAt  DateTime?          @map("bid_fees_refunded_at") @db.Timestamptz(3)
   createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt          DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)

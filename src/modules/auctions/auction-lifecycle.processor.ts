@@ -5,13 +5,14 @@ import { Queue } from 'bullmq';
 import { APP_CONFIG } from '../../config/configuration';
 import type { AppConfig } from '../../config/configuration';
 import { BidRefundService } from '../bidding/bid-refund.service';
+import { ResultsService } from '../results/results.service';
 import { AuctionLifecycleService } from './auction-lifecycle.service';
 import type { LifecycleSweep } from './auction-lifecycle.service';
 
 export const AUCTION_LIFECYCLE_QUEUE = 'auction-lifecycle';
 const SWEEP = 'sweep';
 
-/** Runs the open/close sweep and unfinished refunds on a fixed interval. The schedule lives in Redis, so instances do not duplicate it. */
+/** Opens and closes auctions, computes results and finishes refunds on a fixed interval. The schedule lives in Redis, so instances do not duplicate it. */
 @Processor(AUCTION_LIFECYCLE_QUEUE)
 export class AuctionLifecycleProcessor extends WorkerHost implements OnApplicationBootstrap {
   private readonly logger = new Logger(AuctionLifecycleProcessor.name);
@@ -20,6 +21,7 @@ export class AuctionLifecycleProcessor extends WorkerHost implements OnApplicati
     @InjectQueue(AUCTION_LIFECYCLE_QUEUE) private readonly queue: Queue,
     private readonly lifecycle: AuctionLifecycleService,
     private readonly refunds: BidRefundService,
+    private readonly results: ResultsService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {
     super();
@@ -43,6 +45,8 @@ export class AuctionLifecycleProcessor extends WorkerHost implements OnApplicati
     if (result.activated.length > 0 || result.closing.length > 0) {
       this.logger.log({ activated: result.activated, closing: result.closing }, 'Auction lifecycle sweep');
     }
+    const finalized = await this.results.finalizeDue();
+    if (finalized.length > 0) this.logger.log({ finalized }, 'Auctions finalized');
     await this.refunds.refundPending();
     return result;
   }
