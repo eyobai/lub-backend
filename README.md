@@ -30,17 +30,22 @@ To run the API in Docker as well: `docker compose --profile app up -d --build`.
 
 ## Commands
 
-| Command              | Purpose                                                                      |
-| -------------------- | ---------------------------------------------------------------------------- |
-| `npm run start:dev`  | Start with reload                                                            |
-| `npm run build`      | Compile to `dist/`                                                           |
-| `npm run lint`       | ESLint                                                                       |
-| `npm run typecheck`  | TypeScript check                                                             |
-| `npm test`           | Unit tests                                                                   |
-| `npm run test:e2e`   | Integration tests (needs `docker compose up -d`)                             |
-| `npm run db:migrate` | Create and apply a migration in development                                  |
-| `npm run db:deploy`  | Apply pending migrations                                                     |
-| `npm run seed`       | Create the first SUPER_ADMIN from `SEED_ADMIN_PHONE` / `SEED_ADMIN_PASSWORD` |
+| Command                 | Purpose                                                                                |
+| ----------------------- | -------------------------------------------------------------------------------------- |
+| `npm run start:dev`     | Start with reload                                                                      |
+| `npm run build`         | Compile to `dist/`                                                                     |
+| `npm run lint`          | ESLint                                                                                 |
+| `npm run typecheck`     | TypeScript check                                                                       |
+| `npm test`              | Unit tests                                                                             |
+| `npm run test:e2e`      | Integration tests (needs `docker compose up -d`)                                       |
+| `npm run test:e2e:pool` | The same tests with one database connection; fails if a transaction needs a second one |
+| `npm run test:load`     | Bidding load test against a running API (see `docs/DEPLOYMENT.md`)                     |
+| `npm run openapi`       | Write the API description to `docs/openapi.json`                                       |
+| `npm run db:migrate`    | Create and apply a migration in development                                            |
+| `npm run db:deploy`     | Apply pending migrations                                                               |
+| `npm run seed`          | Create the first SUPER_ADMIN from `SEED_ADMIN_PHONE` / `SEED_ADMIN_PASSWORD`           |
+
+Production deployment, measured capacity and the security review are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Authentication endpoints
 

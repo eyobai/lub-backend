@@ -257,7 +257,7 @@ export class WinnersService {
       if (before.userId === actor.id) {
         throw new AppException(HttpStatus.FORBIDDEN, ErrorCode.FORBIDDEN, 'You cannot verify your own win');
       }
-      const check = await this.results.auditResult(before.auctionId);
+      const check = await this.results.auditResult(before.auctionId, tx);
       if (!check.matches || check.recomputed.winningBidId !== before.bidId) {
         throw new AppException(
           HttpStatus.CONFLICT,

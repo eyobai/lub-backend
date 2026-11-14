@@ -444,6 +444,22 @@ triggers on `ledger_entries`, `bids`, `bid_submissions`, `audit_logs` and `aucti
 - **Deposits and withdrawals** will carry an `Idempotency-Key` like bids do, so a retry returns
   the original result instead of moving money twice.
 
+### Database connections inside a transaction
+
+Code that runs inside a database transaction must read and write through that transaction's client,
+never through the shared client. A second query through the pool needs a second connection while the
+first is held; once as many requests are in that state as the pool has connections, all of them wait
+for each other until they time out. The load test found three such places (currency lookup while
+charging a bid fee, OTP verification, the result re-check during winner verification); all were
+fixed. `npm run test:e2e:pool` runs the integration tests with a pool of one connection, where any
+such query fails within seconds.
+
+Where a write must survive a rollback (the OTP attempt counter), it is done before the transaction
+starts, not on a second connection inside it.
+
+A request that cannot get a connection or a transaction in time is answered `503 SERVICE_BUSY` with
+`Retry-After`, not `500`.
+
 ## 7. Configuration and environments
 
 All settings come from environment variables, validated at startup; the app refuses to start
@@ -489,6 +505,13 @@ See `.env.example` for the full list.
   two SUPER_ADMINs demoting each other at once), role assignment, the staff password reset and
   the forced change, where the temporary password is stored, audit and security-event filters,
   dashboard figures including refunds, auction statistics and role checks on every route.
+
+  Hardening tests: `test/api-contract.e2e-spec.ts` reads the routes from the controllers and checks
+  that each one rejects missing and invalid tokens (and ordinary users, for `/admin`), that the
+  OpenAPI document describes exactly those routes, and the response headers, CORS and error shape.
+  `load/bidding-load-test.mjs` drives a running API with hundreds of concurrent bidders and then
+  compares bid counts, the winner, every wallet and the ledger with what the clients were told.
+  Results are in `docs/DEPLOYMENT.md`.
 
 ## 9. Not built yet / decisions needed
 

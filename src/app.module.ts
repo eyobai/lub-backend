@@ -47,6 +47,7 @@ function prettyLogs(config: AppConfig): boolean {
     LoggerModule.forRootAsync({
       inject: [APP_CONFIG],
       useFactory: (config: AppConfig) => ({
+        forRoutes: ['{*path}'],
         pinoHttp: {
           level: config.logLevel,
           genReqId: (req: IncomingMessage, res: ServerResponse) => {

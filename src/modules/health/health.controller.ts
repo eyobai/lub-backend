@@ -19,15 +19,19 @@ export class HealthController {
 
   @Get()
   @ApiOperation({ summary: 'Liveness probe' })
-  @ApiOkResponse({ schema: { example: { status: 'ok' } } })
+  @ApiOkResponse({ description: 'The process is up', schema: { example: { status: 'ok' } } })
   live() {
     return { status: 'ok' };
   }
 
   @Get('ready')
   @ApiOperation({ summary: 'Readiness probe (PostgreSQL and Redis)' })
-  @ApiOkResponse({ schema: { example: { status: 'ok', checks: { database: 'up', redis: 'up' } } } })
+  @ApiOkResponse({
+    description: 'Both stores answer',
+    schema: { example: { status: 'ok', checks: { database: 'up', redis: 'up' } } },
+  })
   @ApiServiceUnavailableResponse({
+    description: 'A store does not answer; the instance should receive no traffic',
     schema: { example: { status: 'error', checks: { database: 'up', redis: 'down' } } },
   })
   async ready(@Res({ passthrough: true }) res: Response) {

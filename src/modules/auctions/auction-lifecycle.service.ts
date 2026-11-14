@@ -13,6 +13,12 @@ export interface LifecycleSweep {
   closing: string[];
 }
 
+/**
+ * The sweep waits its turn for a database connection as long as a bid does. With the default 2 seconds it lost
+ * its turn whenever many bids were queued, which is exactly when an auction is about to close.
+ */
+const SWEEP_TX_OPTIONS = { maxWait: 10_000, timeout: 20_000 } as const;
+
 @Injectable()
 export class AuctionLifecycleService {
   constructor(
@@ -48,7 +54,7 @@ export class AuctionLifecycleService {
       if (records.length > 0) await tx.auditLog.createMany({ data: records });
 
       return { activated: activated.map((r) => r.id), closing: closing.map((r) => r.id) };
-    });
+    }, SWEEP_TX_OPTIONS);
   }
 
   /**
@@ -71,6 +77,6 @@ export class AuctionLifecycleService {
         await this.notifications.notifyBidders(tx, auction.id, closingReminder(auction, auction.closes_at, minutes));
       }
       return due.map((auction) => auction.id);
-    });
+    }, SWEEP_TX_OPTIONS);
   }
 }

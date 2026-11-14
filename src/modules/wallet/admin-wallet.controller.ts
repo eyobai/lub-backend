@@ -49,6 +49,7 @@ const idempotencyHeader = () =>
 /** Reading wallets is open to back-office staff; moving money or freezing is limited to FINANCE (and SUPER_ADMIN). */
 @ApiTags('Admin: Wallets')
 @ApiBearerAuth()
+@ApiBadRequestResponse(error('VALIDATION_FAILED — a malformed id, query parameter or body'))
 @ApiUnauthorizedResponse(error('UNAUTHORIZED'))
 @ApiForbiddenResponse(error('FORBIDDEN — the signed-in user lacks the required role'))
 @Controller('admin')

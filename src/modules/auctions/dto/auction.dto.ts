@@ -212,7 +212,7 @@ export class AdminListAuctionsQueryDto extends PageQueryDto {
   @IsEnum(AuctionStatus)
   status?: AuctionStatus;
 
-  @ApiPropertyOptional({ format: 'uuid' })
+  @ApiPropertyOptional({ format: 'uuid', description: 'Only auctions of this product' })
   @IsOptional()
   @IsUUID()
   productId?: string;

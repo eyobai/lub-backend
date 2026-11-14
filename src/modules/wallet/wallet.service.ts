@@ -321,7 +321,7 @@ export class WalletService {
     movement: WalletMovement,
     tx?: Tx,
   ): Promise<PostingResult> {
-    const currency = await this.resolveCurrency(movement.currency);
+    const currency = await this.currencies.resolve(movement.currency, false, tx);
     return this.ledger.run(async (t) => {
       const { available } = await this.ensureWallet(movement.userId, currency.code, t);
       const other = await this.ledger.systemAccount(counterpart, currency.code, t);

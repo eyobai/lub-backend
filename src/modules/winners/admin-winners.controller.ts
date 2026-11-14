@@ -34,6 +34,7 @@ const error = (description: string) => ({ description, type: ErrorResponseDto })
 /** Reading is open to back-office staff; verifying and publishing is ADMIN only; delivery is handled by SUPPORT and ADMIN. */
 @ApiTags('Admin: Winners')
 @ApiBearerAuth()
+@ApiBadRequestResponse(error('VALIDATION_FAILED — a malformed id, query parameter or body'))
 @ApiUnauthorizedResponse(error('UNAUTHORIZED'))
 @ApiForbiddenResponse(error('FORBIDDEN — the signed-in user lacks the required role'))
 @Controller('admin/winners')

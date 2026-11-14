@@ -120,7 +120,7 @@ export class ListSecurityEventsQueryDto extends PeriodQueryDto {
   @IsEnum(SecurityEventType)
   type?: SecurityEventType;
 
-  @ApiPropertyOptional({ format: 'uuid' })
+  @ApiPropertyOptional({ format: 'uuid', description: 'Only events of this account' })
   @IsOptional()
   @IsUUID()
   userId?: string;

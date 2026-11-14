@@ -36,6 +36,7 @@ const NOT_READY =
 /** Back-office staff can monitor auctions; only ADMIN (and SUPER_ADMIN) can create or change them. */
 @ApiTags('Admin: Auctions')
 @ApiBearerAuth()
+@ApiBadRequestResponse(error('VALIDATION_FAILED — a malformed id, query parameter or body'))
 @ApiUnauthorizedResponse(error('UNAUTHORIZED'))
 @ApiForbiddenResponse(error('FORBIDDEN — the signed-in user lacks the required role'))
 @Controller('admin/auctions')

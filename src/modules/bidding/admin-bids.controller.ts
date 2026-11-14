@@ -1,5 +1,6 @@
 import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import {
+  ApiBadRequestResponse,
   ApiBearerAuth,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
@@ -18,6 +19,7 @@ const error = (description: string) => ({ description, type: ErrorResponseDto })
 
 @ApiTags('Admin: Auctions')
 @ApiBearerAuth()
+@ApiBadRequestResponse(error('VALIDATION_FAILED — a malformed id, query parameter or body'))
 @ApiUnauthorizedResponse(error('UNAUTHORIZED'))
 @ApiForbiddenResponse(error('FORBIDDEN — the signed-in user lacks the required role'))
 @Controller('admin/auctions')

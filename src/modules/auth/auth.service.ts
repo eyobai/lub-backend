@@ -192,8 +192,9 @@ export class AuthService {
 
     const now = new Date();
     try {
+      const otpId = await this.otp.verify(phoneNumber, OtpPurpose.PHONE_VERIFICATION, dto.code);
       const tokens = await this.prisma.$transaction(async (tx) => {
-        await this.otp.verifyAndConsume(phoneNumber, OtpPurpose.PHONE_VERIFICATION, dto.code, tx);
+        await this.otp.consume(otpId, tx);
         await tx.user.update({ where: { id: user.id }, data: { phoneVerifiedAt: now, lastLoginAt: now } });
         return this.tokens.issueSession({ id: user.id, roles: this.roleNames(user) }, client, tx);
       });
@@ -297,8 +298,9 @@ export class AuthService {
     const passwordHash = await this.passwords.hash(dto.newPassword);
 
     try {
+      const otpId = await this.otp.verify(phoneNumber, OtpPurpose.PASSWORD_RESET, dto.code);
       await this.prisma.$transaction(async (tx) => {
-        await this.otp.verifyAndConsume(phoneNumber, OtpPurpose.PASSWORD_RESET, dto.code, tx);
+        await this.otp.consume(otpId, tx);
         await tx.user.update({
           where: { id: user.id },
           data: { passwordHash, passwordChangedAt: new Date(), mustChangePassword: false },

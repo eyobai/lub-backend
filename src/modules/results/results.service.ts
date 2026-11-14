@@ -285,12 +285,14 @@ export class ResultsService {
   }
 
   /** Recomputes the result from the bids on record and compares it with what was recorded at finalization. */
-  async auditResult(auctionId: string): Promise<ResultAuditDto> {
-    const recorded = await this.load(auctionId, false);
-    const { calculation, winningBid } = await this.prisma.$transaction(async (tx) => {
-      const computed = await this.calculate(tx, auctionId);
-      return { ...computed, winningBid: await this.winningBid(tx, auctionId, computed.calculation) };
-    });
+  async auditResult(auctionId: string, tx?: Tx): Promise<ResultAuditDto> {
+    const recorded = await this.load(auctionId, false, tx);
+    const recompute = async (t: Tx) => {
+      const computed = await this.calculate(t, auctionId);
+      return { ...computed, winningBid: await this.winningBid(t, auctionId, computed.calculation) };
+    };
+    // A caller already inside a transaction passes it, so the check reads through that connection.
+    const { calculation, winningBid } = await (tx ? recompute(tx) : this.prisma.$transaction(recompute));
     const recomputed: ResultSnapshotDto = {
       outcome: calculation.outcome,
       winningAmountMinor: calculation.winningAmountMinor?.toString() ?? null,
@@ -310,8 +312,8 @@ export class ResultsService {
 
   // ── Internals ──────────────────────────────────────────────────────────────
 
-  private async load(auctionId: string, publicOnly: boolean): Promise<ResultWithAuction> {
-    const auction = await this.prisma.auction.findUnique({
+  private async load(auctionId: string, publicOnly: boolean, client: Tx = this.prisma): Promise<ResultWithAuction> {
+    const auction = await client.auction.findUnique({
       where: { id: auctionId },
       select: { status: true, activatedAt: true },
     });
@@ -321,7 +323,7 @@ export class ResultsService {
       (auction.status === AuctionStatus.DRAFT ||
         (auction.status === AuctionStatus.CANCELLED && auction.activatedAt === null));
     if (!auction || hidden) throw notFound();
-    const result = await this.prisma.auctionResult.findUnique({ where: { auctionId }, include: resultInclude });
+    const result = await client.auctionResult.findUnique({ where: { auctionId }, include: resultInclude });
     if (!result) {
       throw new AppException(
         HttpStatus.CONFLICT,

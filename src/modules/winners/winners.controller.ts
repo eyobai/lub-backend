@@ -47,6 +47,7 @@ export class WinnersController {
     description: 'Auctions I won, with the verification status and the progress of the prize delivery.',
   })
   @ApiOkResponse({ type: MyWinPageDto })
+  @ApiBadRequestResponse(error('VALIDATION_FAILED'))
   @ApiUnauthorizedResponse(error('UNAUTHORIZED'))
   listMine(@CurrentUser() user: AuthenticatedUser, @Query() query: PageQueryDto): Promise<MyWinPageDto> {
     return this.winners.listMine(user.id, query);

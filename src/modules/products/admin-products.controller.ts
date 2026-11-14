@@ -32,6 +32,7 @@ const error = (description: string) => ({ description, type: ErrorResponseDto })
 /** Back-office staff can read the catalogue; only ADMIN (and SUPER_ADMIN) can change it. */
 @ApiTags('Admin: Products')
 @ApiBearerAuth()
+@ApiBadRequestResponse(error('VALIDATION_FAILED — a malformed id, query parameter or body'))
 @ApiUnauthorizedResponse(error('UNAUTHORIZED'))
 @ApiForbiddenResponse(error('FORBIDDEN — the signed-in user lacks the required role'))
 @Controller('admin/products')

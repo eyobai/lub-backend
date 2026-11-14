@@ -171,7 +171,7 @@ export class AdminListWinnersQueryDto extends PageQueryDto {
   @IsBoolean()
   published?: boolean;
 
-  @ApiPropertyOptional({ format: 'uuid' })
+  @ApiPropertyOptional({ format: 'uuid', description: 'Only wins of this user' })
   @IsOptional()
   @IsUUID()
   userId?: string;

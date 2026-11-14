@@ -18,10 +18,13 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
+    "test:e2e:pool": "TEST_DATABASE_URL=\"${TEST_DATABASE_URL:-postgresql://lub:lub_dev_password@localhost:5432/lub_test?schema=public}&connection_limit=1&pool_timeout=4\" jest --config ./test/jest-e2e.json",
+    "test:load": "node load/bidding-load-test.mjs",
     "typecheck": "tsc --noEmit",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
-    "seed": "ts-node src/scripts/seed-admin.ts"
+    "seed": "ts-node src/scripts/seed-admin.ts",
+    "openapi": "ts-node src/scripts/export-openapi.ts"
   },
   "dependencies": {
     "@nest-lab/throttler-storage-redis": "^1.2.0",

@@ -12,7 +12,10 @@ async function bootstrap(): Promise<void> {
   if (config.swaggerEnabled) setupSwagger(app);
 
   await app.listen(config.port);
-  logger.log(`API listening on port ${config.port} (${config.env}); docs at /docs`, 'Bootstrap');
+  logger.log(
+    `API listening on port ${config.port} (${config.env})${config.swaggerEnabled ? '; docs at /docs' : ''}`,
+    'Bootstrap',
+  );
 }
 
 void bootstrap();

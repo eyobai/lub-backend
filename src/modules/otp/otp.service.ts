@@ -8,6 +8,9 @@ import { PrismaService } from '../../infra/prisma/prisma.service';
 import { OTP_SENDER } from './senders/otp-sender.interface';
 import type { OtpSender } from './senders/otp-sender.interface';
 
+const invalidCode = () =>
+  new AppException(HttpStatus.BAD_REQUEST, ErrorCode.OTP_INVALID, 'The verification code is invalid or has expired');
+
 export interface OtpIssueResult {
   expiresInSeconds: number;
   resendAvailableInSeconds: number;
@@ -100,28 +103,16 @@ export class OtpService {
   }
 
   /**
-   * Checks a code and consumes it. The attempt counter is committed outside `tx` so failed
-   * guesses are counted even when the caller's transaction rolls back; the consumption itself
-   * joins `tx` so it commits atomically with the caller's changes.
+   * Checks a code and counts the attempt, returning the id of the matching code for `consume`.
+   * Call it before opening a transaction, never inside one: the attempt counter has to be committed on its own,
+   * so that wrong guesses are counted even when the caller's work is rolled back.
    */
-  async verifyAndConsume(
-    phoneNumber: string,
-    purpose: OtpPurpose,
-    code: string,
-    tx: Prisma.TransactionClient = this.prisma,
-  ): Promise<void> {
-    const invalid = () =>
-      new AppException(
-        HttpStatus.BAD_REQUEST,
-        ErrorCode.OTP_INVALID,
-        'The verification code is invalid or has expired',
-      );
-
+  async verify(phoneNumber: string, purpose: OtpPurpose, code: string): Promise<string> {
     const otp = await this.prisma.otpVerification.findFirst({
       where: { phoneNumber, purpose, consumedAt: null, invalidatedAt: null, expiresAt: { gt: new Date() } },
       orderBy: { createdAt: 'desc' },
     });
-    if (!otp) throw invalid();
+    if (!otp) throw invalidCode();
 
     const counted = await this.prisma.$executeRaw`
       UPDATE "otp_verifications" SET "attempts" = "attempts" + 1
@@ -136,13 +127,17 @@ export class OtpService {
 
     const expected = Buffer.from(otp.codeHash, 'hex');
     const actual = Buffer.from(this.hash(phoneNumber, purpose, code), 'hex');
-    if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) throw invalid();
+    if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) throw invalidCode();
+    return otp.id;
+  }
 
+  /** Marks a verified code as used, as part of the caller's transaction. A code can be consumed only once. */
+  async consume(otpId: string, tx: Prisma.TransactionClient): Promise<void> {
     const consumed = await tx.otpVerification.updateMany({
-      where: { id: otp.id, consumedAt: null, invalidatedAt: null },
+      where: { id: otpId, consumedAt: null, invalidatedAt: null },
       data: { consumedAt: new Date() },
     });
-    if (consumed.count !== 1) throw invalid();
+    if (consumed.count !== 1) throw invalidCode();
   }
 
   private hash(phoneNumber: string, purpose: OtpPurpose, code: string): string {
