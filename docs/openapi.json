@@ -6035,6 +6035,7 @@
           },
           "details": {
             "type": "object",
+            "additionalProperties": true,
             "example": {
               "fields": [
                 "password must be longer than or equal to 8 characters"
@@ -6141,12 +6142,12 @@
             "description": "true after staff reset the password: call POST /auth/change-password before anything else."
           },
           "fullName": {
-            "type": "object",
+            "type": "string",
             "example": "Abebe Kebede",
             "nullable": true
           },
           "email": {
-            "type": "object",
+            "type": "string",
             "example": "abebe@example.com",
             "nullable": true
           },
@@ -6907,7 +6908,7 @@
             "maxLength": 2048
           },
           "altText": {
-            "type": "object",
+            "type": "string",
             "example": "Front view",
             "maxLength": 255,
             "nullable": true
@@ -6927,18 +6928,18 @@
             "maxLength": 200
           },
           "description": {
-            "type": "object",
+            "type": "string",
             "maxLength": 10000,
             "nullable": true
           },
           "brand": {
-            "type": "object",
+            "type": "string",
             "example": "Samsung",
             "maxLength": 100,
             "nullable": true
           },
           "model": {
-            "type": "object",
+            "type": "string",
             "example": "SM-A556E",
             "maxLength": 100,
             "nullable": true
@@ -6997,17 +6998,17 @@
             "maxLength": 200
           },
           "description": {
-            "type": "object",
+            "type": "string",
             "maxLength": 10000,
             "nullable": true
           },
           "brand": {
-            "type": "object",
+            "type": "string",
             "maxLength": 100,
             "nullable": true
           },
           "model": {
-            "type": "object",
+            "type": "string",
             "maxLength": 100,
             "nullable": true
           },
@@ -7533,7 +7534,7 @@
             "maxLength": 200
           },
           "description": {
-            "type": "object",
+            "type": "string",
             "maxLength": 10000,
             "nullable": true
           },
@@ -7559,7 +7560,7 @@
             "description": "Allowed amounts are minBid, minBid + step, … up to maxBid. Integer amount in minor units (santim for ETB), as a string so large values keep full precision."
           },
           "maxBidsPerUser": {
-            "type": "object",
+            "type": "number",
             "minimum": 1,
             "nullable": true,
             "description": "Most bids one user may place in this auction. Omit or null for no limit."
@@ -7622,7 +7623,7 @@
             "maxLength": 200
           },
           "description": {
-            "type": "object",
+            "type": "string",
             "maxLength": 10000,
             "nullable": true
           },
@@ -7647,7 +7648,7 @@
             "description": "Integer amount in minor units (santim for ETB), as a string so large values keep full precision."
           },
           "maxBidsPerUser": {
-            "type": "object",
+            "type": "number",
             "minimum": 1,
             "nullable": true
           },
@@ -8504,6 +8505,7 @@
           },
           "data": {
             "type": "object",
+            "additionalProperties": true,
             "nullable": true,
             "description": "Identifiers for linking to the right screen, e.g. `auctionId`, `winnerId`, `transactionId`.",
             "example": {
@@ -9945,16 +9947,19 @@
           },
           "before": {
             "type": "object",
+            "additionalProperties": true,
             "nullable": true,
             "description": "Relevant values before the action"
           },
           "after": {
             "type": "object",
+            "additionalProperties": true,
             "nullable": true,
             "description": "Relevant values after the action"
           },
           "metadata": {
             "type": "object",
+            "additionalProperties": true,
             "nullable": true,
             "description": "Extra context, e.g. the reason given"
           },
@@ -10057,6 +10062,7 @@
           },
           "metadata": {
             "type": "object",
+            "additionalProperties": true,
             "nullable": true
           },
           "createdAt": {

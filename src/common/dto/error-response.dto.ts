@@ -11,6 +11,8 @@ export class ErrorResponseDto {
   message!: string;
 
   @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
     example: { fields: ['password must be longer than or equal to 8 characters'] },
     description: 'Extra context, e.g. validation messages or retryAfterSeconds',
   })

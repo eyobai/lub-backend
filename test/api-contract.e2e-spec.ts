@@ -139,6 +139,25 @@ describe('API contract', () => {
     expect(problems).toEqual([]);
   });
 
+  it('gives every documented field a real type, so generated clients accept what the server sends', () => {
+    // Without an explicit type a `string | null` field is documented as an object with no content, and a
+    // free-form object must say that it accepts any keys.
+    const schemas = buildOpenApiDocument(t.app).components?.schemas ?? {};
+    const problems = Object.entries(schemas).flatMap(([schema, definition]) =>
+      Object.entries(('properties' in definition && definition.properties) || {})
+        .filter(
+          ([, property]) =>
+            'type' in property &&
+            property.type === 'object' &&
+            !property.properties &&
+            !property.additionalProperties &&
+            !property.allOf,
+        )
+        .map(([name]) => `${schema}.${name}`),
+    );
+    expect(problems).toEqual([]);
+  });
+
   it('sends security headers and does not reveal the framework', async () => {
     const res = await t.get('/auctions').expect(200);
     expect(res.headers['x-powered-by']).toBeUndefined();

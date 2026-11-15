@@ -44,10 +44,10 @@ export class AuthUserDto {
   })
   mustChangePassword!: boolean;
 
-  @ApiPropertyOptional({ example: 'Abebe Kebede', nullable: true })
+  @ApiPropertyOptional({ example: 'Abebe Kebede', type: String, nullable: true })
   fullName!: string | null;
 
-  @ApiPropertyOptional({ example: 'abebe@example.com', nullable: true })
+  @ApiPropertyOptional({ example: 'abebe@example.com', type: String, nullable: true })
   email!: string | null;
 
   @ApiProperty({ example: '2026-01-01T12:00:00.000Z' })

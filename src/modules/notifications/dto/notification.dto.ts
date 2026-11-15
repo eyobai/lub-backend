@@ -31,7 +31,8 @@ export class NotificationDto {
   body!: string;
 
   @ApiProperty({
-    type: Object,
+    type: 'object',
+    additionalProperties: true,
     nullable: true,
     description: 'Identifiers for linking to the right screen, e.g. `auctionId`, `winnerId`, `transactionId`.',
     example: { auctionId: 'b7d1c2de-0f0a-4a53-9b1e-5d6f6f1c2a10', outcome: 'WINNER_FOUND' },

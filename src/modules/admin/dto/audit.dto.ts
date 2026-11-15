@@ -78,13 +78,28 @@ export class AuditLogDto {
   @ApiProperty({ type: String, nullable: true })
   entityId!: string | null;
 
-  @ApiProperty({ type: Object, nullable: true, description: 'Relevant values before the action' })
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: true,
+    nullable: true,
+    description: 'Relevant values before the action',
+  })
   before!: unknown;
 
-  @ApiProperty({ type: Object, nullable: true, description: 'Relevant values after the action' })
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: true,
+    nullable: true,
+    description: 'Relevant values after the action',
+  })
   after!: unknown;
 
-  @ApiProperty({ type: Object, nullable: true, description: 'Extra context, e.g. the reason given' })
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: true,
+    nullable: true,
+    description: 'Extra context, e.g. the reason given',
+  })
   metadata!: unknown;
 
   @ApiProperty({ type: String, nullable: true })
@@ -151,7 +166,7 @@ export class SecurityEventDto {
   @ApiProperty({ type: String, nullable: true })
   userAgent!: string | null;
 
-  @ApiProperty({ type: Object, nullable: true })
+  @ApiProperty({ type: 'object', additionalProperties: true, nullable: true })
   metadata!: unknown;
 
   @ApiProperty()

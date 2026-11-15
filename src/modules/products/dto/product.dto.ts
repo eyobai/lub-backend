@@ -59,7 +59,7 @@ export class ProductImageInputDto {
   @MaxLength(2048)
   url!: string;
 
-  @ApiPropertyOptional({ example: 'Front view', maxLength: 255, nullable: true })
+  @ApiPropertyOptional({ example: 'Front view', maxLength: 255, type: String, nullable: true })
   @IsOptional()
   @Trim()
   @IsString()
@@ -75,21 +75,21 @@ export class CreateProductDto {
   @MaxLength(200)
   name!: string;
 
-  @ApiPropertyOptional({ maxLength: 10000, nullable: true })
+  @ApiPropertyOptional({ maxLength: 10000, type: String, nullable: true })
   @IsOptional()
   @Trim()
   @IsString()
   @MaxLength(10000)
   description?: string | null;
 
-  @ApiPropertyOptional({ example: 'Samsung', maxLength: 100, nullable: true })
+  @ApiPropertyOptional({ example: 'Samsung', maxLength: 100, type: String, nullable: true })
   @IsOptional()
   @Trim()
   @IsString()
   @MaxLength(100)
   brand?: string | null;
 
-  @ApiPropertyOptional({ example: 'SM-A556E', maxLength: 100, nullable: true })
+  @ApiPropertyOptional({ example: 'SM-A556E', maxLength: 100, type: String, nullable: true })
   @IsOptional()
   @Trim()
   @IsString()
@@ -142,21 +142,21 @@ export class UpdateProductDto {
   @MaxLength(200)
   name?: string;
 
-  @ApiPropertyOptional({ maxLength: 10000, nullable: true })
+  @ApiPropertyOptional({ maxLength: 10000, type: String, nullable: true })
   @IsOptional()
   @Trim()
   @IsString()
   @MaxLength(10000)
   description?: string | null;
 
-  @ApiPropertyOptional({ maxLength: 100, nullable: true })
+  @ApiPropertyOptional({ maxLength: 100, type: String, nullable: true })
   @IsOptional()
   @Trim()
   @IsString()
   @MaxLength(100)
   brand?: string | null;
 
-  @ApiPropertyOptional({ maxLength: 100, nullable: true })
+  @ApiPropertyOptional({ maxLength: 100, type: String, nullable: true })
   @IsOptional()
   @Trim()
   @IsString()

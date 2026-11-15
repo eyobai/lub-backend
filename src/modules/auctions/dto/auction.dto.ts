@@ -35,7 +35,7 @@ export class CreateAuctionDto {
   @MaxLength(200)
   title!: string;
 
-  @ApiPropertyOptional({ maxLength: 10000, nullable: true })
+  @ApiPropertyOptional({ maxLength: 10000, type: String, nullable: true })
   @IsOptional()
   @Trim()
   @IsString()
@@ -65,6 +65,7 @@ export class CreateAuctionDto {
 
   @ApiPropertyOptional({
     minimum: 1,
+    type: Number,
     nullable: true,
     description: 'Most bids one user may place in this auction. Omit or null for no limit.',
   })
@@ -115,7 +116,7 @@ export class UpdateAuctionDto {
   @MaxLength(200)
   title?: string;
 
-  @ApiPropertyOptional({ maxLength: 10000, nullable: true })
+  @ApiPropertyOptional({ maxLength: 10000, type: String, nullable: true })
   @IsOptional()
   @Trim()
   @IsString()
@@ -142,7 +143,7 @@ export class UpdateAuctionDto {
   @IsMinorAmount()
   bidStepMinor?: string;
 
-  @ApiPropertyOptional({ minimum: 1, nullable: true })
+  @ApiPropertyOptional({ minimum: 1, type: Number, nullable: true })
   @IsOptional()
   @IsInt()
   @Min(1)
