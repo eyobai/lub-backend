@@ -13,6 +13,7 @@ Needs Node.js 22 and Docker.
 cp .env.example .env
 docker compose up -d            # PostgreSQL 16 + Redis 7
 npm install
+npx prisma generate             # build the database client
 npm run db:deploy               # apply migrations
 npm run start:dev
 ```
