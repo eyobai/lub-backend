@@ -1,5 +1,5 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { ActorType, AuctionStatus, DuplicateBidPolicy, EntryDirection } from '@prisma/client';
+import { ActorType, AuctionStatus, DuplicateBidPolicy } from '@prisma/client';
 import type { Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import type { ClientInfo } from '../../common/decorators/client-info.decorator';
@@ -14,6 +14,7 @@ import { LEDGER_TX_OPTIONS } from '../ledger/ledger.service';
 import { bidSubmitted, lowBalance } from '../notifications/notification-templates';
 import { NotificationsService } from '../notifications/notifications.service';
 import { WalletService } from '../wallet/wallet.service';
+import type { SpendableBalance } from '../wallet/wallet.service';
 import type {
   AdminBidPageDto,
   AdminListBidsQueryDto,
@@ -27,15 +28,15 @@ type Tx = Prisma.TransactionClient;
 const submissionInclude = {
   bids: { orderBy: { sequence: 'asc' } },
   auction: { select: { currency: true, currencyRef: { select: { minorUnits: true } } } },
-  walletTransaction: { include: { entries: { where: { direction: EntryDirection.DEBIT } } } },
+  walletTransaction: { select: { reference: true, metadata: true } },
 } satisfies Prisma.BidSubmissionInclude;
 type SubmissionWithRelations = Prisma.BidSubmissionGetPayload<{ include: typeof submissionInclude }>;
 
-function toSubmissionDto(s: SubmissionWithRelations): BidSubmissionDto {
+/** `balance`: the wallet right after the charge (or now, for a replay). */
+function toSubmissionDto(s: SubmissionWithRelations, balance: SpendableBalance): BidSubmissionDto {
   const minorUnits = s.auction.currencyRef.minorUnits;
   const money = (value: bigint) => formatMinor(value, minorUnits);
-  // The debit line of the fee journal is the bidder's wallet; it carries the balance right after the charge.
-  const balanceAfter = s.walletTransaction.entries[0].balanceAfterMinor;
+  const balanceAfter = balance.availableMinor;
   return {
     id: s.id,
     auctionId: s.auctionId,
@@ -50,6 +51,9 @@ function toSubmissionDto(s: SubmissionWithRelations): BidSubmissionDto {
     transactionReference: s.walletTransaction.reference,
     walletAvailableMinor: balanceAfter.toString(),
     walletAvailable: money(balanceAfter),
+    walletBonusMinor: balance.bonusMinor.toString(),
+    walletBonus: money(balance.bonusMinor),
+    paidWithBonusMinor: paidWithBonus(s).toString(),
     bids: s.bids.map((b) => ({
       id: b.id,
       amountMinor: b.amountMinor.toString(),
@@ -58,6 +62,12 @@ function toSubmissionDto(s: SubmissionWithRelations): BidSubmissionDto {
     })),
     createdAt: s.createdAt,
   };
+}
+
+/** How much of the fee came from the bonus, as recorded on the fee's journal. */
+function paidWithBonus(s: SubmissionWithRelations): bigint {
+  const meta = s.walletTransaction.metadata as { bonusMinor?: unknown } | null;
+  return typeof meta?.bonusMinor === 'string' && /^\d+$/.test(meta.bonusMinor) ? BigInt(meta.bonusMinor) : 0n;
 }
 
 const notFound = () => new AppException(HttpStatus.NOT_FOUND, ErrorCode.NOT_FOUND, 'Auction not found');
@@ -108,7 +118,8 @@ export class BiddingService {
             'This idempotency key was already used for a different request',
           );
         }
-        return { submission: toSubmissionDto(earlier), replayed: true };
+        const now = await this.wallets.spendable(user.id, earlier.auction.currency, tx);
+        return { submission: toSubmissionDto(earlier, now), replayed: true };
       }
 
       const { auction, rejectDuplicates } = await this.checkAmounts(tx, user.id, auctionId, amountsMinor);
@@ -161,11 +172,12 @@ export class BiddingService {
         minorUnits: submission.auction.currencyRef.minorUnits,
       });
       await this.notifications.notify(tx, user.id, bidSubmitted(auction, id, count, money(totalFeeMinor)));
-      const balanceMinor = submission.walletTransaction.entries[0]?.balanceAfterMinor;
-      if (balanceMinor !== undefined && balanceMinor < auction.bidFeeMinor) {
+      const after = await this.wallets.spendable(user.id, auction.currency, tx);
+      const balanceMinor = after.availableMinor + after.bonusMinor;
+      if (balanceMinor < auction.bidFeeMinor) {
         await this.notifications.notify(tx, user.id, lowBalance(money(balanceMinor), money(auction.bidFeeMinor)));
       }
-      return { submission: toSubmissionDto(submission), replayed: false };
+      return { submission: toSubmissionDto(submission, after), replayed: false };
     }, LEDGER_TX_OPTIONS);
   }
 

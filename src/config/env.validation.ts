@@ -103,6 +103,12 @@ export const envSchema = Joi.object({
   DEPOSIT_MAX_MINOR: Joi.string()
     .pattern(/^[1-9]\d{0,14}$/)
     .default('5000000'),
+  // Top-up bonus: percent of each wallet top-up (0 = off), the most one top-up earns, and how long it lasts.
+  TOPUP_BONUS_PERCENT: Joi.number().integer().min(0).max(1000).default(100),
+  TOPUP_BONUS_MAX_MINOR: Joi.string()
+    .pattern(/^[0-9]{1,15}$/)
+    .default('1000000'),
+  TOPUP_BONUS_VALID_DAYS: Joi.number().integer().min(1).max(365).default(7),
   DEPOSIT_EXPIRY_MINUTES: Joi.number().integer().min(5).max(10080).default(120),
   PAYMENT_SWEEP_INTERVAL_SECONDS: Joi.number().integer().min(0).max(3600).default(60),
   PUBLIC_API_URL: Joi.string()

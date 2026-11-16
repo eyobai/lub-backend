@@ -210,6 +210,7 @@ model Wallet {
   user                User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
   ledgerAccounts      LedgerAccount[]
   paymentTransactions PaymentTransaction[]
+  bonusGrants         WalletBonusGrant[]
   withdrawalRequests  WithdrawalRequest[]
   currencyRef         Currency             @relation(fields: [currency], references: [code], onDelete: Restrict)
 
@@ -220,6 +221,8 @@ model Wallet {
 enum LedgerAccountType {
   USER_WALLET // liability: money the platform owes the user
   USER_WALLET_HOLD // liability: funds reserved for pending withdrawals
+  USER_WALLET_BONUS // liability: top-up bonus; spendable on bid fees only, never withdrawable, expires
+  PROMOTIONS // the platform's cost of bonuses given (goes negative as bonuses are granted)
   PLATFORM_REVENUE // income from bid fees
   PAYMENT_CLEARING // asset: money held at / receivable from payment providers
   WITHDRAWAL_CLEARING // money in flight to users
@@ -257,6 +260,8 @@ enum WalletTransactionType {
   WITHDRAWAL_RELEASE
   WITHDRAWAL_PAYOUT
   ADJUSTMENT
+  BONUS // a top-up bonus granted
+  BONUS_EXPIRY // what was left of a bonus when it expired
 }
 
 enum WalletTransactionStatus {
@@ -285,6 +290,8 @@ model WalletTransaction {
   createdBy          User?               @relation("WalletTxCreator", fields: [createdById], references: [id], onDelete: SetNull)
   paymentTransaction PaymentTransaction?
   bidSubmission      BidSubmission?
+  bonusGranted       WalletBonusGrant?   @relation("BonusGrant")
+  bonusExpired       WalletBonusGrant?   @relation("BonusExpiry")
   currencyRef        Currency            @relation(fields: [currency], references: [code], onDelete: Restrict)
 
   @@index([type, createdAt])
@@ -348,6 +355,8 @@ model PaymentTransaction {
   verifiedAt          DateTime?        @map("verified_at") @db.Timestamptz(3)
   /// Provider page where the user pays. Present once the provider has opened the transaction.
   checkoutUrl         String?          @map("checkout_url") @db.VarChar(1024)
+  /// Top-up bonus promised when this deposit was opened, granted once it is confirmed. 0 for bid payments.
+  bonusMinor          BigInt           @default(0) @map("bonus_minor")
   /// Direct charge: the mobile wallet asked to send the payer a request on their phone (e.g. "telebirr"). Null: Chapa's checkout page.
   chargeMethod        String?          @map("charge_method") @db.VarChar(32)
   /// When the provider was last asked for the state of this payment.
@@ -371,6 +380,7 @@ model PaymentTransaction {
   bidSubmission     BidSubmission?         @relation(fields: [bidSubmissionId], references: [id], onDelete: Restrict)
   walletTransaction WalletTransaction?     @relation(fields: [walletTransactionId], references: [id], onDelete: Restrict)
   events            PaymentProviderEvent[]
+  bonusGrant        WalletBonusGrant?
   withdrawalRequest WithdrawalRequest?
   currencyRef       Currency               @relation(fields: [currency], references: [code], onDelete: Restrict)
 
@@ -382,6 +392,29 @@ model PaymentTransaction {
 }
 
 /// Raw provider callbacks/webhooks, deduplicated per provider event id, used for reconciliation.
+/// One top-up bonus, spent oldest-expiring first. The wallet's bonus account balance is the sum of `remainingMinor`
+/// over its grants; the expiry sweep posts what is left of an expired grant back to PROMOTIONS.
+model WalletBonusGrant {
+  id                   String   @id @default(uuid()) @db.Uuid
+  walletId             String   @map("wallet_id") @db.Uuid
+  amountMinor          BigInt   @map("amount_minor")
+  remainingMinor       BigInt   @map("remaining_minor")
+  expiresAt            DateTime @map("expires_at") @db.Timestamptz(3)
+  paymentTransactionId String?  @unique @map("payment_transaction_id") @db.Uuid
+  grantTransactionId   String   @unique @map("grant_transaction_id") @db.Uuid
+  expiryTransactionId  String?  @unique @map("expiry_transaction_id") @db.Uuid
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  wallet             Wallet              @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  paymentTransaction PaymentTransaction? @relation(fields: [paymentTransactionId], references: [id], onDelete: Restrict)
+  grantTransaction   WalletTransaction   @relation("BonusGrant", fields: [grantTransactionId], references: [id], onDelete: Restrict)
+  expiryTransaction  WalletTransaction?  @relation("BonusExpiry", fields: [expiryTransactionId], references: [id], onDelete: Restrict)
+
+  @@index([walletId, expiresAt])
+  @@index([expiresAt])
+  @@map("wallet_bonus_grants")
+}
+
 model PaymentProviderEvent {
   id                   String    @id @default(uuid()) @db.Uuid
   provider             String    @db.VarChar(50)

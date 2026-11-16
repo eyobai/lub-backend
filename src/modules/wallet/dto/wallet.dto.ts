@@ -93,6 +93,29 @@ export class WalletDto {
   @ApiProperty({ example: '0.00', description: DECIMAL })
   held!: string;
 
+  @ApiProperty({
+    example: '50000',
+    description: `Top-up bonus that has not expired: spent on bid fees before \`available\`, never withdrawable. ${MINOR}`,
+  })
+  bonusMinor!: string;
+
+  @ApiProperty({ example: '500.00', description: DECIMAL })
+  bonus!: string;
+
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description: 'When the bonus that expires first does so; null without bonus.',
+  })
+  bonusExpiresAt!: Date | null;
+
+  @ApiProperty({ example: '175050', description: `What can be spent on bid fees: available + bonus. ${MINOR}` })
+  spendableMinor!: string;
+
+  @ApiProperty({ example: '1750.50', description: DECIMAL })
+  spendable!: string;
+
   @ApiProperty({ description: 'A frozen wallet can receive money but cannot spend or withdraw it' })
   isFrozen!: boolean;
 
@@ -130,6 +153,12 @@ export class WalletTransactionDto {
 
   @ApiProperty({ example: '1250.50', description: DECIMAL })
   balanceAfter!: string;
+
+  @ApiProperty({
+    enum: ['CASH', 'BONUS'],
+    description: 'Which balance moved: the spendable balance, or the top-up bonus. `balanceAfter` is of that balance.',
+  })
+  balance!: 'CASH' | 'BONUS';
 
   @ApiPropertyOptional({ type: String, nullable: true })
   description!: string | null;

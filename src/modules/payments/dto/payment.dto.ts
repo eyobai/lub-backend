@@ -49,6 +49,15 @@ export class DepositOptionsDto {
       "Empty: only Chapa's checkout page.",
   })
   directChargeMethods!: string[];
+
+  @ApiProperty({ example: 100, description: 'Top-up bonus, in percent of a wallet top-up. 0: no bonus.' })
+  bonusPercent!: number;
+
+  @ApiProperty({ example: '1000000', description: `The most bonus one top-up earns. ${MINOR}` })
+  bonusMaxMinor!: string;
+
+  @ApiProperty({ example: 7, description: 'Days a bonus can be spent before it expires.' })
+  bonusValidDays!: number;
 }
 
 export class ChargeDto {
@@ -182,6 +191,17 @@ export class DepositDto {
       "Direct charge: the wallet asked to send a request to the payer's phone. Null for a checkout-page payment.",
   })
   chargeMethod!: string | null;
+
+  @ApiProperty({
+    example: '50000',
+    description:
+      `Top-up bonus this deposit earns, added to the wallet's bonus once the payment is confirmed. ` +
+      `0 for bid payments. ${MINOR}`,
+  })
+  bonusMinor!: string;
+
+  @ApiProperty({ example: '500.00', description: DECIMAL })
+  bonus!: string;
 
   @ApiProperty({
     type: String,

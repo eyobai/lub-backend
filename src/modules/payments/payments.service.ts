@@ -115,6 +115,9 @@ export class PaymentsService {
       minorUnits: currency.minorUnits,
       minAmountMinor: depositMinMinor.toString(),
       maxAmountMinor: depositMaxMinor.toString(),
+      bonusPercent: this.config.payments.bonus.percent,
+      bonusMaxMinor: this.config.payments.bonus.maxMinor.toString(),
+      bonusValidDays: this.config.payments.bonus.validDays,
       directChargeMethods: this.enabled ? this.config.payments.chapa.directChargeMethods : [],
     };
   }
@@ -222,6 +225,8 @@ export class PaymentsService {
           currency: currency.code,
           idempotencyKey,
           chargeMethod: charge?.method,
+          // Promised now, at today's terms; given once the payment is confirmed. Bid payments earn none.
+          bonusMinor: bid ? 0n : this.bonusFor(amountMinor),
           bidAuctionId: bid?.auctionId,
           bidAmountsMinor: bid?.amountsMinor ?? [],
         },
@@ -424,6 +429,8 @@ export class PaymentsService {
   /** Asks Chapa about deposits still waiting, less often the older they get, and gives up on the ones never paid. */
   async sweep(now = new Date()): Promise<SweepResult> {
     const result: SweepResult = { checked: 0, succeeded: 0, closed: 0 };
+    // Bonuses expire whether or not a payment provider is configured right now.
+    await this.wallets.expireBonuses(now);
     if (!this.enabled) return result;
     const stale = await this.prisma.paymentTransaction.updateMany({
       where: {
@@ -677,6 +684,19 @@ export class PaymentsService {
           },
           tx,
         );
+        if (payment.bonusMinor > 0n) {
+          await this.wallets.grantBonus(
+            {
+              userId: payment.userId,
+              currency: payment.currency,
+              amountMinor: payment.bonusMinor,
+              expiresAt: new Date(now.getTime() + this.config.payments.bonus.validDays * 86_400_000),
+              paymentTransactionId: payment.id,
+              idempotencyKey: `bonus:payment:${payment.merchantReference}`,
+            },
+            tx,
+          );
+        }
         const updated = await tx.paymentTransaction.update({
           where: { id },
           data: {
@@ -776,6 +796,13 @@ export class PaymentsService {
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
+  /** The top-up bonus a wallet top-up of this amount earns under the current terms. */
+  private bonusFor(amountMinor: bigint): bigint {
+    const { percent, maxMinor } = this.config.payments.bonus;
+    const bonus = (amountMinor * BigInt(percent)) / 100n;
+    return bonus < maxMinor ? bonus : maxMinor;
+  }
+
   private assertEnabled(): void {
     if (this.enabled) return;
     throw new AppException(
@@ -843,6 +870,8 @@ export class PaymentsService {
       minorUnits,
       checkoutUrl: payment.status === PaymentStatus.PENDING ? payment.checkoutUrl : null,
       chargeMethod: payment.chargeMethod,
+      bonusMinor: payment.bonusMinor.toString(),
+      bonus: formatMinor(payment.bonusMinor, minorUnits),
       failureReason: publicFailureReason(payment.status),
       walletTransactionId: payment.walletTransactionId,
       confirmedAt: payment.verifiedAt,

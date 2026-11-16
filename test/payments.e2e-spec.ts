@@ -132,6 +132,9 @@ describe('Deposits through Chapa', () => {
         minAmountMinor: '1000',
         maxAmountMinor: '5000000',
         directChargeMethods: ['telebirr', 'mpesa', 'cbebirr', 'ebirr'],
+        bonusPercent: 100,
+        bonusMaxMinor: '1000000',
+        bonusValidDays: 7,
       });
     });
   });
@@ -329,12 +332,15 @@ describe('Deposits through Chapa', () => {
       expect(await balance(user)).toBe('12550');
 
       const history = await t.get('/wallet/transactions', user.token).expect(200);
-      expect(history.body.items).toHaveLength(1);
-      expect(history.body.items[0]).toMatchObject({
+      // The deposit, and the top-up bonus it earned (newest first).
+      expect(history.body.items).toHaveLength(2);
+      expect(history.body.items[1]).toMatchObject({
         id: after.walletTransactionId,
         type: 'DEPOSIT',
+        balance: 'CASH',
         amountMinor: '12550',
       });
+      expect(history.body.items[0]).toMatchObject({ type: 'BONUS', balance: 'BONUS', amountMinor: '12550' });
       const notifications = await t.get('/notifications', user.token).expect(200);
       expect(notifications.body.total).toBe(1);
       await expectBooksToBalance();

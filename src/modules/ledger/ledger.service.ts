@@ -14,6 +14,15 @@ export const LEDGER_TX_OPTIONS = { maxWait: 10_000, timeout: 20_000 } as const;
 const ALLOW_NEGATIVE: readonly LedgerAccountType[] = [
   LedgerAccountType.PAYMENT_CLEARING,
   LedgerAccountType.ADJUSTMENTS,
+  // Bonuses are the platform's own money given away: this account records what that cost.
+  LedgerAccountType.PROMOTIONS,
+];
+
+/** Accounts that belong to one wallet, never shared by the platform. */
+const WALLET_ACCOUNT_TYPES: readonly LedgerAccountType[] = [
+  LedgerAccountType.USER_WALLET,
+  LedgerAccountType.USER_WALLET_HOLD,
+  LedgerAccountType.USER_WALLET_BONUS,
 ];
 
 const REFERENCE_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -54,7 +63,7 @@ export class LedgerService {
 
   /** Returns the platform-level account of the given type, creating it on first use. */
   async systemAccount(type: LedgerAccountType, currency: string, tx: Tx): Promise<LedgerAccount> {
-    if (type === LedgerAccountType.USER_WALLET || type === LedgerAccountType.USER_WALLET_HOLD) {
+    if (WALLET_ACCOUNT_TYPES.includes(type)) {
       throw new Error(`${type} is a per-wallet account, not a system account`);
     }
     const code = `${type}:${currency}`;
@@ -156,7 +165,10 @@ export class LedgerService {
       }
       const delta = balanceDelta(account.type, line);
       const balanceAfter = account.balance_minor + delta;
-      if (account.type === LedgerAccountType.USER_WALLET && delta < 0n && account.wallet_id) {
+      // Spending a bonus is spending: a frozen wallet cannot do either.
+      const spendable =
+        account.type === LedgerAccountType.USER_WALLET || account.type === LedgerAccountType.USER_WALLET_BONUS;
+      if (spendable && delta < 0n && account.wallet_id) {
         debitedWalletIds.push(account.wallet_id);
       }
       if (balanceAfter < 0n && !account.allow_negative) {

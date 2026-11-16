@@ -44,6 +44,8 @@ export interface AppConfig {
     provider: 'none' | 'chapa';
     /** Smallest and largest single deposit, in minor units of the default currency. */
     depositMinMinor: bigint;
+    /** Top-up bonus: this percent of a wallet top-up, at most `maxMinor`, spendable for `validDays`. 0 turns it off. */
+    bonus: { percent: number; maxMinor: bigint; validDays: number };
     depositMaxMinor: bigint;
     /** A deposit the provider never confirms is given up on after this long. */
     depositExpiryMinutes: number;
@@ -126,6 +128,11 @@ export function configuration(): { app: AppConfig } {
       payments: {
         provider: (e.PAYMENT_PROVIDER ?? 'none') as 'none' | 'chapa',
         depositMinMinor: BigInt(e.DEPOSIT_MIN_MINOR || '1000'),
+        bonus: {
+          percent: num('TOPUP_BONUS_PERCENT', 100),
+          maxMinor: BigInt(e.TOPUP_BONUS_MAX_MINOR || '1000000'),
+          validDays: num('TOPUP_BONUS_VALID_DAYS', 7),
+        },
         depositMaxMinor: BigInt(e.DEPOSIT_MAX_MINOR || '5000000'),
         depositExpiryMinutes: num('DEPOSIT_EXPIRY_MINUTES', 120),
         sweepIntervalSeconds: num('PAYMENT_SWEEP_INTERVAL_SECONDS', 60),

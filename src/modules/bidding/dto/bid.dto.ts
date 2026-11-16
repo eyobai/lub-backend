@@ -98,6 +98,15 @@ export class BidSubmissionDto {
   @ApiProperty({ example: '700.00', description: DECIMAL })
   walletAvailable!: string;
 
+  @ApiProperty({ example: '0', description: `Top-up bonus left after this charge. ${MINOR}` })
+  walletBonusMinor!: string;
+
+  @ApiProperty({ example: '0.00', description: DECIMAL })
+  walletBonus!: string;
+
+  @ApiProperty({ example: '7500', description: `Part of the fees paid with top-up bonus. ${MINOR}` })
+  paidWithBonusMinor!: string;
+
   @ApiProperty({ type: [BidDto], description: 'The recorded bids, in the order they were sent' })
   bids!: BidDto[];
 

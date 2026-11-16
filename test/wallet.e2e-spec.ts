@@ -97,7 +97,8 @@ describe('Wallet and ledger', () => {
       expect(results.every((r) => r.status === 200)).toBe(true);
       expect(new Set(results.map((r) => r.body.id)).size).toBe(1);
       expect(await t.prisma.wallet.count({ where: { userId: user.id } })).toBe(1);
-      expect(await t.prisma.ledgerAccount.count({ where: { wallet: { userId: user.id } } })).toBe(2);
+      // Spendable, held for withdrawals, and top-up bonus.
+      expect(await t.prisma.ledgerAccount.count({ where: { wallet: { userId: user.id } } })).toBe(3);
     });
 
     it('rejects unknown currencies', async () => {

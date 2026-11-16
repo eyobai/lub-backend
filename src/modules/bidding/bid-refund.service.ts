@@ -78,8 +78,10 @@ export class BidRefundService {
       const cancelled = auction.status === AuctionStatus.CANCELLED;
       if (auction.bidFeesRefundedAt) return { refunded: 0, complete: true };
 
-      const pending = await tx.$queryRaw<{ id: string; user_id: string; total_fee_minor: bigint }[]>`
-        SELECT s.id, s.user_id, s.total_fee_minor
+      const pending = await tx.$queryRaw<
+        { id: string; user_id: string; total_fee_minor: bigint; wallet_transaction_id: string }[]
+      >`
+        SELECT s.id, s.user_id, s.total_fee_minor, s.wallet_transaction_id
         FROM bid_submissions s
         WHERE s.auction_id = ${auctionId}::uuid
           AND NOT EXISTS (SELECT 1 FROM wallet_transactions w WHERE w.idempotency_key = 'bid-refund:' || s.id::text)
@@ -87,7 +89,9 @@ export class BidRefundService {
         LIMIT ${BATCH_SIZE}`;
 
       for (const submission of pending) {
-        await this.wallets.refund(
+        // Bonus spent on the fee goes back to the bonus, cash to the spendable balance.
+        await this.wallets.refundBidFee(
+          submission.wallet_transaction_id,
           {
             userId: submission.user_id,
             amountMinor: submission.total_fee_minor,
