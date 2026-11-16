@@ -101,7 +101,7 @@ mode (test or live) all match.
 | ------ | ------------------------------------ | ----------------------- | --------------------------------------------------------------- |
 | GET    | `/wallet/deposit-options`            | Bearer                  | Whether deposits are on, the limits, and test or live mode      |
 | POST   | `/wallet/deposits`                   | Bearer                  | Start a deposit (`Idempotency-Key`); answers with `checkoutUrl` |
-| GET    | `/wallet/deposits`                   | Bearer                  | My deposits, newest first, cursor paging                        |
+| GET    | `/wallet/deposits`                   | Bearer                  | My deposits, newest first, a page at a time                      |
 | GET    | `/wallet/deposits/:id`               | Bearer                  | One of my deposits; checks with Chapa while it is unconfirmed   |
 | POST   | `/payments/chapa/webhook`            | Chapa signature         | Chapa's event notifications                                     |
 | GET    | `/payments/chapa/callback`           | Public                  | Chapa's call after checkout; only triggers a verification       |
