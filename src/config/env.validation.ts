@@ -81,6 +81,33 @@ export const envSchema = Joi.object({
   AUCTION_SWEEP_INTERVAL_SECONDS: Joi.number().integer().min(0).max(3600).default(5),
   AUCTION_CLOSING_REMINDER_MINUTES: Joi.number().integer().min(0).max(10080).default(60),
   NOTIFICATION_DISPATCH_INTERVAL_SECONDS: Joi.number().integer().min(0).max(3600).default(10),
+
+  PAYMENT_PROVIDER: Joi.string().valid('none', 'chapa').default('none'),
+  CHAPA_SECRET_KEY: Joi.string()
+    .allow('')
+    .when('PAYMENT_PROVIDER', { is: 'chapa', then: Joi.string().min(10).invalid('').required() }),
+  CHAPA_WEBHOOK_SECRET: Joi.string()
+    .allow('')
+    .when('PAYMENT_PROVIDER', { is: 'chapa', then: Joi.string().min(16).invalid('').required() }),
+  CHAPA_BASE_URL: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .default('https://api.chapa.co'),
+  CHAPA_TIMEOUT_MS: Joi.number().integer().min(1000).max(60000).default(15000),
+  DEPOSIT_MIN_MINOR: Joi.string()
+    .pattern(/^[1-9]\d{0,14}$/)
+    .default('1000'),
+  DEPOSIT_MAX_MINOR: Joi.string()
+    .pattern(/^[1-9]\d{0,14}$/)
+    .default('5000000'),
+  DEPOSIT_EXPIRY_MINUTES: Joi.number().integer().min(5).max(10080).default(120),
+  PAYMENT_SWEEP_INTERVAL_SECONDS: Joi.number().integer().min(0).max(3600).default(60),
+  PUBLIC_API_URL: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .allow(''),
+  WEB_APP_URL: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .allow('')
+    .when('PAYMENT_PROVIDER', { is: 'chapa', then: Joi.string().min(1).invalid('').required() }),
 }).unknown(true);
 
 export function validateEnv(config: Record<string, unknown>): Record<string, unknown> {
@@ -91,6 +118,18 @@ export function validateEnv(config: Record<string, unknown>): Record<string, unk
   const value = result.value as Record<string, unknown>;
   if (value.PHONE_VERIFICATION_REQUIRED === true && value.OTP_PROVIDER === 'none') {
     throw new Error('Invalid environment configuration: PHONE_VERIFICATION_REQUIRED=true needs an OTP_PROVIDER');
+  }
+  if (BigInt(value.DEPOSIT_MIN_MINOR as string) > BigInt(value.DEPOSIT_MAX_MINOR as string)) {
+    throw new Error('Invalid environment configuration: DEPOSIT_MIN_MINOR is larger than DEPOSIT_MAX_MINOR');
+  }
+  if (value.PAYMENT_PROVIDER === 'chapa' && value.NODE_ENV === 'production') {
+    // In production the webhook is the only notice that reaches the server when a payer never returns to the site.
+    for (const key of ['PUBLIC_API_URL', 'WEB_APP_URL', 'CHAPA_BASE_URL']) {
+      const address: unknown = value[key];
+      if (typeof address !== 'string' || !address.startsWith('https://')) {
+        throw new Error(`Invalid environment configuration: ${key} must be an https address in production`);
+      }
+    }
   }
   return value;
 }

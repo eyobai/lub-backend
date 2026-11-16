@@ -39,6 +39,22 @@ export interface AppConfig {
   };
   /** How often pending SMS/email/push notifications are sent, in seconds. 0 turns the background job off. */
   notifications: { dispatchIntervalSeconds: number };
+  payments: {
+    /** "none" turns deposits off. */
+    provider: 'none' | 'chapa';
+    /** Smallest and largest single deposit, in minor units of the default currency. */
+    depositMinMinor: bigint;
+    depositMaxMinor: bigint;
+    /** A deposit the provider never confirms is given up on after this long. */
+    depositExpiryMinutes: number;
+    /** How often unconfirmed deposits are checked with the provider, in seconds. 0 turns the background job off. */
+    sweepIntervalSeconds: number;
+    /** This API's address as the provider reaches it, without a trailing slash. Empty: no callback address is sent. */
+    publicApiUrl: string;
+    /** The website's address, where users land after paying, without a trailing slash. */
+    webAppUrl: string;
+    chapa: { secretKey: string; webhookSecret: string; baseUrl: string; timeoutMs: number };
+  };
 }
 
 /** Builds the typed config from already-validated environment variables. */
@@ -100,6 +116,21 @@ export function configuration(): { app: AppConfig } {
         closingReminderMinutes: num('AUCTION_CLOSING_REMINDER_MINUTES', 60),
       },
       notifications: { dispatchIntervalSeconds: num('NOTIFICATION_DISPATCH_INTERVAL_SECONDS', 10) },
+      payments: {
+        provider: (e.PAYMENT_PROVIDER ?? 'none') as 'none' | 'chapa',
+        depositMinMinor: BigInt(e.DEPOSIT_MIN_MINOR || '1000'),
+        depositMaxMinor: BigInt(e.DEPOSIT_MAX_MINOR || '5000000'),
+        depositExpiryMinutes: num('DEPOSIT_EXPIRY_MINUTES', 120),
+        sweepIntervalSeconds: num('PAYMENT_SWEEP_INTERVAL_SECONDS', 60),
+        publicApiUrl: (e.PUBLIC_API_URL ?? '').replace(/\/+$/, ''),
+        webAppUrl: (e.WEB_APP_URL ?? '').replace(/\/+$/, ''),
+        chapa: {
+          secretKey: e.CHAPA_SECRET_KEY ?? '',
+          webhookSecret: e.CHAPA_WEBHOOK_SECRET ?? '',
+          baseUrl: (e.CHAPA_BASE_URL ?? 'https://api.chapa.co').replace(/\/+$/, ''),
+          timeoutMs: num('CHAPA_TIMEOUT_MS', 15000),
+        },
+      },
     },
   };
 }

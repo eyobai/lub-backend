@@ -1,7 +1,8 @@
 # Deployment notes
 
 How to run the backend in production, and what was verified before hand-off (Phase 11).
-Payments, withdrawals and SMS delivery are not built; do not take real money with this version.
+Deposits through Chapa are built and tested in test mode only; withdrawals and SMS delivery are not
+built. Do not take real money until the items under "Payments" below are done.
 
 ## What you need
 
@@ -40,6 +41,32 @@ proxy must overwrite that header, not append to a client-supplied one.
 
 API documentation (`/docs`) is off in production unless `SWAGGER_ENABLED=true`. The same document is in
 the repository as `docs/openapi.json` (`npm run openapi` regenerates it).
+
+## Payments
+
+Deposits are off (`PAYMENT_PROVIDER=none`) until these are set:
+
+| Variable               | Value                                                                               |
+| ---------------------- | ----------------------------------------------------------------------------------- |
+| `PAYMENT_PROVIDER`     | `chapa`                                                                             |
+| `CHAPA_SECRET_KEY`     | From the Chapa dashboard. `CHASECK_TEST-…` is test mode; no real money moves        |
+| `CHAPA_WEBHOOK_SECRET` | The "secret hash" entered in the Chapa dashboard's webhook settings, 16+ characters |
+| `PUBLIC_API_URL`       | This API's public HTTPS address, for example `https://api.example.com`              |
+| `WEB_APP_URL`          | The website's public address; users return there after paying                       |
+
+In the Chapa dashboard set the webhook URL to `<PUBLIC_API_URL>/api/v1/payments/chapa/webhook` and the
+secret hash to the same value as `CHAPA_WEBHOOK_SECRET`. With `NODE_ENV=production` the API refuses
+`http://` addresses for Chapa, `PUBLIC_API_URL` and `WEB_APP_URL`.
+
+Before switching to a live key:
+
+- Chapa must have approved the business account, and the legal review noted in `docs/ARCHITECTURE.md`
+  must be done.
+- Run one small real deposit end to end and check it in `GET /admin/deposits` and
+  `GET /admin/ledger/reconciliation`.
+- Decide who looks at deposits flagged for review (`GET /admin/deposits?needsReview=true`): mismatched
+  payments, refunds and reversals wait there.
+- The wallet is credited with the full amount; Chapa's fee is deducted from your settlement.
 
 ## Release steps
 
@@ -131,6 +158,7 @@ BASE_URL=http://localhost:3000 ADMIN_PHONE=+2519... ADMIN_PASSWORD=... USERS=200
   carrier, so a busy auction can hit the general limit for honest users. Raise `THROTTLE_LIMIT`, or
   ask for per-user limits to be added.
 - A forgotten password is reset by staff (`POST /admin/users/:id/reset-password`); there is no SMS.
-- Wallets are funded by a FINANCE user only; there is no deposit or withdrawal.
+- There is no withdrawal. A refunded or reversed deposit is flagged for finance staff, not taken back
+  automatically.
 - Notifications are in-app only.
 - Audit logs, security events and notifications are never deleted. Plan archiving as they grow.

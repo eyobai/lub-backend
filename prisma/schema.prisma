@@ -346,6 +346,12 @@ model PaymentTransaction {
   failureReason       String?          @map("failure_reason")
   providerPayload     Json?            @map("provider_payload")
   verifiedAt          DateTime?        @map("verified_at") @db.Timestamptz(3)
+  /// Provider page where the user pays. Present once the provider has opened the transaction.
+  checkoutUrl         String?          @map("checkout_url") @db.VarChar(1024)
+  /// When the provider was last asked for the state of this payment.
+  lastCheckedAt       DateTime?        @map("last_checked_at") @db.Timestamptz(3)
+  /// Set when a person must look: the provider reported something that does not match, or a refund/reversal after crediting.
+  reviewReason        String?          @map("review_reason")
   createdAt           DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt           DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -359,6 +365,7 @@ model PaymentTransaction {
   @@unique([provider, providerReference])
   @@unique([userId, idempotencyKey])
   @@index([status, createdAt])
+  @@index([userId, createdAt])
   @@map("payment_transactions")
 }
 

@@ -62,4 +62,57 @@ describe('environment validation', () => {
       /PHONE_VERIFICATION_REQUIRED=true needs an OTP_PROVIDER/,
     );
   });
+
+  describe('payments', () => {
+    const chapa = {
+      PAYMENT_PROVIDER: 'chapa',
+      CHAPA_SECRET_KEY: 'CHASECK_TEST-not-a-real-key',
+      CHAPA_WEBHOOK_SECRET: 'w'.repeat(32),
+      WEB_APP_URL: 'http://localhost:5173',
+    };
+
+    it('leaves deposits off by default, with the default limits', () => {
+      expect(validateEnv(base)).toMatchObject({
+        PAYMENT_PROVIDER: 'none',
+        DEPOSIT_MIN_MINOR: '1000',
+        DEPOSIT_MAX_MINOR: '5000000',
+      });
+    });
+
+    it('accepts Chapa with a key, a webhook secret and the website address', () => {
+      expect(validateEnv({ ...base, ...chapa })).toMatchObject({ PAYMENT_PROVIDER: 'chapa' });
+    });
+
+    it.each(['CHAPA_SECRET_KEY', 'CHAPA_WEBHOOK_SECRET', 'WEB_APP_URL'])('refuses Chapa without %s', (key) => {
+      expect(() => validateEnv({ ...base, ...chapa, [key]: '' })).toThrow(key);
+    });
+
+    it('refuses a short webhook secret and an unknown provider', () => {
+      expect(() => validateEnv({ ...base, ...chapa, CHAPA_WEBHOOK_SECRET: 'short' })).toThrow('CHAPA_WEBHOOK_SECRET');
+      expect(() => validateEnv({ ...base, PAYMENT_PROVIDER: 'paypal' })).toThrow('PAYMENT_PROVIDER');
+    });
+
+    it('needs https addresses for the API, the website and Chapa in production', () => {
+      const production = {
+        ...base,
+        ...chapa,
+        NODE_ENV: 'production',
+        OTP_PROVIDER: 'none',
+        PUBLIC_API_URL: 'https://api.example.com',
+        WEB_APP_URL: 'https://example.com',
+      };
+      expect(() => validateEnv(production)).not.toThrow();
+      for (const key of ['PUBLIC_API_URL', 'WEB_APP_URL', 'CHAPA_BASE_URL']) {
+        expect(() => validateEnv({ ...production, [key]: 'http://example.com' })).toThrow(`${key} must be an https`);
+      }
+      expect(() => validateEnv({ ...production, PUBLIC_API_URL: '' })).toThrow('PUBLIC_API_URL must be an https');
+    });
+
+    it('refuses a minimum deposit above the maximum, and amounts that are not whole numbers', () => {
+      expect(() => validateEnv({ ...base, DEPOSIT_MIN_MINOR: '2000', DEPOSIT_MAX_MINOR: '1000' })).toThrow(
+        'DEPOSIT_MIN_MINOR is larger',
+      );
+      expect(() => validateEnv({ ...base, DEPOSIT_MIN_MINOR: '10.5' })).toThrow('DEPOSIT_MIN_MINOR');
+    });
+  });
 });

@@ -18,8 +18,8 @@ Client ──HTTPS──> NestJS API ──> PostgreSQL   source of truth: users
                      │
                      ├─────────> Redis        rate limits, login lockouts, revoked sessions, BullMQ
                      │
-                     └─ BullMQ workers        auction open/close, winner calculation, notifications;
-                                              payment reconciliation (later phase)
+                     └─ BullMQ workers        auction open/close, winner calculation, notifications,
+                                              checking unconfirmed deposits with Chapa
 ```
 
 Rules that hold everywhere:
@@ -80,14 +80,13 @@ src/
     results/                             winner calculation, auction results, result re-check
     winners/                             winner verification, publishing, prize delivery
     notifications/                       in-app notifications, provider abstraction, dispatch job
+    payments/                            wallet deposits through Chapa: start, verify, webhook, re-check job
     admin/                               user management, staff password reset, audit viewer, dashboard
     auth/                                registration, login, tokens, password recovery
   scripts/seed-admin.ts                  bootstrap SUPER_ADMIN
 prisma/schema.prisma, prisma/migrations  schema and SQL migrations
 test/                                    integration tests against real PostgreSQL + Redis
 ```
-
-Planned module: `payments`.
 
 ## 4. Authentication
 
@@ -437,12 +436,51 @@ keys and transaction references; `CHECK` constraints for positive amounts, non-n
 balances, valid auction price ranges and time windows, and bid-submission totals; append-only
 triggers on `ledger_entries`, `bids`, `bid_submissions`, `audit_logs` and `auction_results`.
 
-## 6. Planned concurrency design (later phases)
+## 6. Payments (deposits through Chapa)
 
-- **Payment callbacks** are stored raw in `payment_provider_events` with a unique provider
-  event ID; a wallet is credited at most once per provider transaction.
-- **Deposits and withdrawals** will carry an `Idempotency-Key` like bids do, so a retry returns
-  the original result instead of moving money twice.
+Off unless `PAYMENT_PROVIDER=chapa`. Only deposits exist; withdrawals are not built.
+
+**Starting.** `POST /wallet/deposits` (with an `Idempotency-Key`) stores a `payment_transactions`
+row in `INITIATED` with a random reference `LUB-…`, then opens the transaction at Chapa
+(`POST /v1/transaction/initialize`, `tx_ref` = the reference) and stores the checkout address;
+the row becomes `PENDING`. If Chapa refuses or cannot be reached the row becomes `FAILED` and
+the caller gets `PAYMENT_PROVIDER_ERROR`. No money moves at this point. A user may have at
+most 5 unconfirmed deposits; staff accounts and frozen wallets cannot start one.
+
+**Confirming.** There is one path to a credit, whatever triggers it: ask Chapa
+(`GET /v1/transaction/verify/<tx_ref>`) and credit only when it reports `success` **and** the
+reference, currency, amount and mode (test key ⇒ test payment) equal what was stored. The
+triggers are the webhook, Chapa's callback, the user reading `GET /wallet/deposits/:id` after
+returning from checkout, the background job, and a FINANCE re-check. What the browser, the
+callback or the webhook body say about the amount or status is never used.
+
+**Crediting once.** The credit runs in one database transaction: the payment row is locked
+(`SELECT … FOR UPDATE`), a row already `SUCCEEDED` is left alone, and the wallet posting
+(debit payment clearing, credit the user's wallet) carries the idempotency key
+`payment:chapa:<reference>`, which is unique in the ledger. Two triggers arriving together
+therefore queue on the row lock, and the second finds the work done. The wallet gets the full
+amount the user asked for; Chapa's fee is the platform's cost.
+
+**When it does not match.** A `success` whose amount, currency, reference or mode differs is not
+credited: the deposit is flagged (`review_reason`) and a `SUSPICIOUS_PAYMENT` security event is
+written. FINANCE clears the flag with a note (`resolve-review`); there is deliberately no
+"credit anyway" action in this module.
+
+**Webhooks.** `POST /payments/chapa/webhook` checks the HMAC-SHA256 signature over the raw
+request bytes (`x-chapa-signature`, or `chapa-signature`) with a constant-time comparison; a bad
+signature gets 401 and nothing is stored. A valid event is stored raw in
+`payment_provider_events` under a unique provider event ID, so a repeat is handled once. The
+answer is 200 once handled, and 503 if Chapa could not be asked, so Chapa delivers it again.
+`charge.refunded` and `charge.reversed` flag the deposit for review; money already credited is
+not taken back automatically, because the user may have spent it.
+
+**Background job.** Every `PAYMENT_SWEEP_INTERVAL_SECONDS` a BullMQ job re-checks unconfirmed
+deposits, less often as they age (30 s to 10 min apart), and closes one as `EXPIRED` after
+`DEPOSIT_EXPIRY_MINUTES`. A payment that Chapa reports as paid after it was closed as failed or
+expired is still credited when a webhook or a FINANCE re-check finds it.
+
+**Test and live.** A key starting with `CHASECK_TEST` is test mode: `GET /wallet/deposit-options`
+says so, and a live payment would be refused as a mode mismatch (and the reverse).
 
 ### Database connections inside a transaction
 
@@ -515,7 +553,9 @@ See `.env.example` for the full list.
 
 ## 9. Not built yet / decisions needed
 
-- Payments (user deposits, provider callbacks) and withdrawals.
+- Withdrawals (Chapa transfers with a staff approval step), and taking money back after a refund
+  or reversal, which is left to finance staff for now.
+- Deposits have been run against a simulated Chapa only until a test key is supplied.
 - SMS, email or push delivery of notifications: the abstraction exists, no provider does.
 - What happens to the prize and the fees when a winner is rejected.
 - The `EXTEND_AUCTION` no-unique-bid policy.

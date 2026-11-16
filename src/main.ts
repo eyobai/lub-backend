@@ -4,7 +4,7 @@ import { AppModule } from './app.module';
 import { configureApp, setupSwagger } from './app.setup';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create(AppModule, { bufferLogs: true, rawBody: true });
   const logger = app.get(Logger);
   app.useLogger(logger);
 

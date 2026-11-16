@@ -45,7 +45,8 @@ export function buildOpenApiDocument(app: INestApplication) {
     .setVersion('0.1.0')
     .addBearerAuth()
     .addTag('Authentication', 'Registration, phone verification, sign-in, tokens and password recovery')
-    .addTag('Wallet', 'Balance and transaction history of the signed-in user')
+    .addTag('Wallet', 'Balance, transaction history and deposits of the signed-in user')
+    .addTag('Payments', 'Addresses the payment provider calls; not for client applications')
     .addTag('Auctions', 'Public auction listing and details')
     .addTag('Bids', 'Placing bids and my bid history')
     .addTag('Results', 'Auction results')
@@ -57,6 +58,7 @@ export function buildOpenApiDocument(app: INestApplication) {
     .addTag('Admin: Products', 'Back-office product catalogue')
     .addTag('Admin: Auctions', 'Back-office auction setup and lifecycle')
     .addTag('Admin: Wallets', 'Back-office wallet views, manual adjustments, freezing and ledger reconciliation')
+    .addTag('Admin: Payments', 'Back-office view of deposits, re-checking one with the provider, and review flags')
     .addTag('Health', 'Liveness and readiness probes')
     .build();
   return SwaggerModule.createDocument(app, builder);

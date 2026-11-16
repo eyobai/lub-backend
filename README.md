@@ -88,8 +88,43 @@ All amounts are integer minor units (santim) sent as strings, with a formatted c
 | POST   | `/admin/wallets/:userId/freeze`, `/unfreeze` | FINANCE                 | Block / allow spending                    |
 | GET    | `/admin/ledger/reconciliation`               | FINANCE                 | Prove cached balances from ledger lines   |
 
-`SUPER_ADMIN` passes every role check. There is no user-facing deposit endpoint yet: deposits
-arrive with the payments module. Until then a FINANCE user funds test wallets with an adjustment.
+`SUPER_ADMIN` passes every role check. A FINANCE user can still fund a test wallet with an
+adjustment; real deposits go through the payment endpoints below.
+
+## Deposit endpoints (Chapa)
+
+Off unless `PAYMENT_PROVIDER=chapa`. A deposit never adds money by itself: the wallet is credited
+only after this API has asked Chapa to verify the payment and the amount, currency, reference and
+mode (test or live) all match.
+
+| Method | Path                                 | Auth                    | Purpose                                                         |
+| ------ | ------------------------------------ | ----------------------- | --------------------------------------------------------------- |
+| GET    | `/wallet/deposit-options`            | Bearer                  | Whether deposits are on, the limits, and test or live mode      |
+| POST   | `/wallet/deposits`                   | Bearer                  | Start a deposit (`Idempotency-Key`); answers with `checkoutUrl` |
+| GET    | `/wallet/deposits`                   | Bearer                  | My deposits, newest first, cursor paging                        |
+| GET    | `/wallet/deposits/:id`               | Bearer                  | One of my deposits; checks with Chapa while it is unconfirmed   |
+| POST   | `/payments/chapa/webhook`            | Chapa signature         | Chapa's event notifications                                     |
+| GET    | `/payments/chapa/callback`           | Public                  | Chapa's call after checkout; only triggers a verification       |
+| GET    | `/admin/deposits`                    | SUPPORT, FINANCE, ADMIN | All deposits; filter by status, user, reference, needs review   |
+| GET    | `/admin/deposits/:id`                | SUPPORT, FINANCE, ADMIN | One deposit with provider details                               |
+| POST   | `/admin/deposits/:id/recheck`        | FINANCE                 | Ask Chapa again; credits the wallet if Chapa says it was paid   |
+| POST   | `/admin/deposits/:id/resolve-review` | FINANCE                 | Clear the review flag with a note                               |
+
+The flow for a client: `POST /wallet/deposits` with `{ "amountMinor": "50000" }`, send the user to
+`checkoutUrl`, and when they come back to `<WEB_APP_URL>/wallet/deposits/<id>` read
+`GET /wallet/deposits/:id` until `status` is no longer `PENDING`.
+
+To try it locally in Chapa's test mode, set in `.env`:
+
+```
+PAYMENT_PROVIDER=chapa
+CHAPA_SECRET_KEY=<your CHASECK_TEST-... key>
+CHAPA_WEBHOOK_SECRET=<any 16+ random characters>
+WEB_APP_URL=http://localhost:5173
+```
+
+Chapa cannot reach a laptop, so leave `PUBLIC_API_URL` empty; the deposit is then confirmed when the
+user returns from checkout, and by the background check once a minute. Withdrawals are not built.
 
 ## Product and auction endpoints
 
