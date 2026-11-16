@@ -9,6 +9,6 @@ import { BidsController } from './bids.controller';
   imports: [WalletModule],
   controllers: [BidsController, AdminBidsController],
   providers: [BiddingService, BidRefundService],
-  exports: [BidRefundService],
+  exports: [BidRefundService, BiddingService],
 })
 export class BiddingModule {}

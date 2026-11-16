@@ -1,7 +1,18 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PaymentStatus } from '@prisma/client';
-import { Transform } from 'class-transformer';
-import { IsBoolean, IsEnum, IsOptional, IsString, IsUUID, Matches, MaxLength, MinLength } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import {
+  IsBoolean,
+  IsEnum,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Matches,
+  MaxLength,
+  MinLength,
+  ValidateNested,
+} from 'class-validator';
+import { PlaceBidsDto } from '../../bidding/dto/bid.dto';
 import { PageQueryDto } from '../../../common/dto/page-query.dto';
 import { Trim } from '../../../common/utils/trim.transform';
 
@@ -31,11 +42,57 @@ export class DepositOptionsDto {
   maxAmountMinor!: string;
 }
 
+export class BidToPayDto extends PlaceBidsDto {
+  @ApiProperty({ format: 'uuid', description: 'The auction to bid in.' })
+  @IsUUID()
+  auctionId!: string;
+}
+
 export class StartDepositDto {
-  @ApiProperty({ example: '50000', description: MINOR })
+  @ApiProperty({
+    example: '50000',
+    description: `${MINOR} With \`bid\`, it must equal the bid fee times the number of amounts.`,
+  })
   @IsString()
   @Matches(/^[1-9][0-9]{0,14}$/, { message: 'amountMinor must be a positive whole number of minor units' })
   amountMinor!: string;
+
+  @ApiPropertyOptional({
+    type: BidToPayDto,
+    description:
+      'Pay and bid: this payment is for these bids. They are checked before the payment opens; once it is ' +
+      'confirmed the money goes into the wallet and the bids are placed from it. If they are refused by then ' +
+      '(the auction closed, for example) the money stays in the wallet. The smallest-deposit limit does not apply.',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BidToPayDto)
+  bid?: BidToPayDto;
+}
+
+export class PaidBidDto {
+  @ApiProperty({ format: 'uuid' })
+  auctionId!: string;
+
+  @ApiProperty({ type: [String], example: ['500', '1250'], description: MINOR })
+  amountsMinor!: string[];
+
+  @ApiProperty({ type: [String], example: ['5.00', '12.50'], description: DECIMAL })
+  amounts!: string[];
+
+  @ApiProperty({
+    enum: ['WAITING', 'PLACED', 'REFUSED'],
+    description:
+      'WAITING: the payment is not confirmed yet (or the bids are being placed). PLACED: the bids were placed. ' +
+      'REFUSED: the bids could not be placed; `error` says why and the money is in the wallet.',
+  })
+  state!: 'WAITING' | 'PLACED' | 'REFUSED';
+
+  @ApiProperty({ type: String, format: 'uuid', nullable: true, description: 'The bid submission, once PLACED.' })
+  submissionId!: string | null;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Why the bids were refused.' })
+  error!: string | null;
 }
 
 export class DepositDto {
@@ -101,6 +158,9 @@ export class DepositDto {
 
   @ApiProperty()
   createdAt!: Date;
+
+  @ApiProperty({ type: PaidBidDto, nullable: true, description: 'Pay and bid: the bids this payment is for.' })
+  bid!: PaidBidDto | null;
 }
 
 export class DepositPageDto {

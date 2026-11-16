@@ -111,65 +111,7 @@ export class BiddingService {
         return { submission: toSubmissionDto(earlier), replayed: true };
       }
 
-      const auction = await this.openAuction(tx, auctionId);
-
-      const invalid = amountsMinor.filter(
-        (a) =>
-          a < auction.minBidMinor || a > auction.maxBidMinor || (a - auction.minBidMinor) % auction.bidStepMinor !== 0n,
-      );
-      if (invalid.length > 0) {
-        throw new AppException(
-          HttpStatus.UNPROCESSABLE_ENTITY,
-          ErrorCode.BID_AMOUNT_INVALID,
-          'Some amounts are outside the range this auction accepts',
-          {
-            invalidAmountsMinor: invalid.map(String),
-            minBidMinor: auction.minBidMinor.toString(),
-            maxBidMinor: auction.maxBidMinor.toString(),
-            bidStepMinor: auction.bidStepMinor.toString(),
-          },
-        );
-      }
-      if (amountsMinor.length > auction.maxBidsPerRequest) {
-        throw new AppException(
-          HttpStatus.UNPROCESSABLE_ENTITY,
-          ErrorCode.BID_LIMIT_EXCEEDED,
-          `This auction accepts at most ${auction.maxBidsPerRequest} bids per request`,
-          { maxBidsPerRequest: auction.maxBidsPerRequest },
-        );
-      }
-      if (auction.maxBidsPerUser !== null) {
-        // Exact under the auction row lock: nobody else can add bids to this auction right now.
-        const placed = await tx.bid.count({ where: { auctionId, userId: user.id } });
-        if (placed + amountsMinor.length > auction.maxBidsPerUser) {
-          throw new AppException(
-            HttpStatus.UNPROCESSABLE_ENTITY,
-            ErrorCode.BID_LIMIT_EXCEEDED,
-            `This auction allows ${auction.maxBidsPerUser} bids per user`,
-            {
-              maxBidsPerUser: auction.maxBidsPerUser,
-              placed,
-              remaining: Math.max(auction.maxBidsPerUser - placed, 0),
-            },
-          );
-        }
-      }
-      const rejectDuplicates = auction.duplicateBidPolicy === DuplicateBidPolicy.REJECT_SAME_USER_SAME_AMOUNT;
-      if (rejectDuplicates) {
-        const repeated = await tx.bid.findMany({
-          where: { auctionId, userId: user.id, amountMinor: { in: amountsMinor } },
-          select: { amountMinor: true },
-          orderBy: { amountMinor: 'asc' },
-        });
-        if (repeated.length > 0) {
-          throw new AppException(
-            HttpStatus.CONFLICT,
-            ErrorCode.DUPLICATE_BID,
-            'You have already bid some of these amounts in this auction',
-            { amountsMinor: repeated.map((bid) => bid.amountMinor.toString()) },
-          );
-        }
-      }
+      const { auction, rejectDuplicates } = await this.checkAmounts(tx, user.id, auctionId, amountsMinor);
 
       const count = amountsMinor.length;
       const totalFeeMinor = auction.bidFeeMinor * BigInt(count);
@@ -225,6 +167,87 @@ export class BiddingService {
       }
       return { submission: toSubmissionDto(submission), replayed: false };
     }, LEDGER_TX_OPTIONS);
+  }
+
+  /**
+   * Whether these bids would be accepted right now, without placing them or charging anything. Used before a
+   * payment is opened for them, so nobody pays for bids that are refused. The same rules run again when the
+   * bids are placed.
+   */
+  async check(
+    user: AuthenticatedUser,
+    auctionId: string,
+    amountsMinor: bigint[],
+  ): Promise<{ title: string; currency: string; bidFeeMinor: bigint }> {
+    if (isStaff(user.roles)) {
+      throw new AppException(HttpStatus.FORBIDDEN, ErrorCode.FORBIDDEN, 'Staff accounts cannot place bids');
+    }
+    const { auction } = await this.prisma.$transaction((tx) => this.checkAmounts(tx, user.id, auctionId, amountsMinor));
+    return { title: auction.title, currency: auction.currency, bidFeeMinor: auction.bidFeeMinor };
+  }
+
+  /** The rules every submission must pass, read under the auction row lock. Throws the first one broken. */
+  private async checkAmounts(tx: Tx, userId: string, auctionId: string, amountsMinor: bigint[]) {
+    const auction = await this.openAuction(tx, auctionId);
+
+    const invalid = amountsMinor.filter(
+      (a) =>
+        a < auction.minBidMinor || a > auction.maxBidMinor || (a - auction.minBidMinor) % auction.bidStepMinor !== 0n,
+    );
+    if (invalid.length > 0) {
+      throw new AppException(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        ErrorCode.BID_AMOUNT_INVALID,
+        'Some amounts are outside the range this auction accepts',
+        {
+          invalidAmountsMinor: invalid.map(String),
+          minBidMinor: auction.minBidMinor.toString(),
+          maxBidMinor: auction.maxBidMinor.toString(),
+          bidStepMinor: auction.bidStepMinor.toString(),
+        },
+      );
+    }
+    if (amountsMinor.length > auction.maxBidsPerRequest) {
+      throw new AppException(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        ErrorCode.BID_LIMIT_EXCEEDED,
+        `This auction accepts at most ${auction.maxBidsPerRequest} bids per request`,
+        { maxBidsPerRequest: auction.maxBidsPerRequest },
+      );
+    }
+    if (auction.maxBidsPerUser !== null) {
+      // Exact under the auction row lock: nobody else can add bids to this auction right now.
+      const placed = await tx.bid.count({ where: { auctionId, userId: userId } });
+      if (placed + amountsMinor.length > auction.maxBidsPerUser) {
+        throw new AppException(
+          HttpStatus.UNPROCESSABLE_ENTITY,
+          ErrorCode.BID_LIMIT_EXCEEDED,
+          `This auction allows ${auction.maxBidsPerUser} bids per user`,
+          {
+            maxBidsPerUser: auction.maxBidsPerUser,
+            placed,
+            remaining: Math.max(auction.maxBidsPerUser - placed, 0),
+          },
+        );
+      }
+    }
+    const rejectDuplicates = auction.duplicateBidPolicy === DuplicateBidPolicy.REJECT_SAME_USER_SAME_AMOUNT;
+    if (rejectDuplicates) {
+      const repeated = await tx.bid.findMany({
+        where: { auctionId, userId: userId, amountMinor: { in: amountsMinor } },
+        select: { amountMinor: true },
+        orderBy: { amountMinor: 'asc' },
+      });
+      if (repeated.length > 0) {
+        throw new AppException(
+          HttpStatus.CONFLICT,
+          ErrorCode.DUPLICATE_BID,
+          'You have already bid some of these amounts in this auction',
+          { amountsMinor: repeated.map((bid) => bid.amountMinor.toString()) },
+        );
+      }
+    }
+    return { auction, rejectDuplicates };
   }
 
   /** The signed-in user's own bids, newest first. Other users' amounts are never returned. */

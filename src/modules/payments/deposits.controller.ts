@@ -3,6 +3,7 @@ import {
   ApiBadGatewayResponse,
   ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiHeader,
@@ -66,8 +67,12 @@ export class DepositsController {
   @ApiBadRequestResponse(error('VALIDATION_FAILED, IDEMPOTENCY_KEY_REQUIRED'))
   @ApiForbiddenResponse(error('FORBIDDEN — staff accounts cannot add money; WALLET_FROZEN'))
   @ApiUnprocessableEntityResponse(
-    error('DEPOSIT_AMOUNT_INVALID — outside the limits (details carry them); IDEMPOTENCY_KEY_REUSED'),
+    error(
+      'DEPOSIT_AMOUNT_INVALID — outside the limits, or not what the bids cost (details say); IDEMPOTENCY_KEY_REUSED; ' +
+        'with `bid`, any refusal placing those bids would give (BID_AMOUNT_INVALID, BID_LIMIT_EXCEEDED, …)',
+    ),
   )
+  @ApiConflictResponse(error('With `bid`: AUCTION_NOT_OPEN, AUCTION_CLOSED, DUPLICATE_BID'))
   @ApiTooManyRequestsResponse(error('DEPOSIT_LIMIT_REACHED — too many deposits are waiting for payment'))
   @ApiBadGatewayResponse(error('PAYMENT_PROVIDER_ERROR — the provider could not open the payment; nothing was taken'))
   @ApiServiceUnavailableResponse(error('PAYMENTS_UNAVAILABLE — no payment provider is configured'))
@@ -78,7 +83,8 @@ export class DepositsController {
     @Client() client: ClientInfo,
     @Res({ passthrough: true }) res: Response,
   ): Promise<DepositDto> {
-    const { deposit, replayed } = await this.payments.start(user, idempotencyKey, BigInt(dto.amountMinor), client);
+    const bid = dto.bid && { auctionId: dto.bid.auctionId, amountsMinor: dto.bid.amountsMinor.map((a) => BigInt(a)) };
+    const { deposit, replayed } = await this.payments.start(user, idempotencyKey, BigInt(dto.amountMinor), client, bid);
     if (replayed) res.setHeader(REPLAYED_HEADER, 'true');
     return deposit;
   }

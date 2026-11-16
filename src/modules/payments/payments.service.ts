@@ -1,5 +1,5 @@
 import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
-import { ActorType, PaymentDirection, PaymentStatus, Prisma, SecurityEventType } from '@prisma/client';
+import { ActorType, PaymentDirection, PaymentStatus, Prisma, RoleName, SecurityEventType } from '@prisma/client';
 import type { Currency, PaymentTransaction } from '@prisma/client';
 import { createHash, randomBytes } from 'node:crypto';
 import type { ClientInfo } from '../../common/decorators/client-info.decorator';
@@ -13,6 +13,7 @@ import { APP_CONFIG } from '../../config/configuration';
 import type { AppConfig } from '../../config/configuration';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { BiddingService } from '../bidding/bidding.service';
 import { CurrencyService } from '../currency/currency.service';
 import { LedgerService } from '../ledger/ledger.service';
 import type { Tx } from '../ledger/ledger.types';
@@ -56,6 +57,12 @@ export interface SweepResult {
   closed: number;
 }
 
+/** Pay and bid: the bids a deposit pays for. */
+export interface BidToPay {
+  auctionId: string;
+  amountsMinor: bigint[];
+}
+
 export interface WebhookHeaders {
   'x-chapa-signature'?: unknown;
   'chapa-signature'?: unknown;
@@ -77,6 +84,7 @@ export class PaymentsService {
     private readonly currencies: CurrencyService,
     private readonly audit: AuditService,
     private readonly chapa: ChapaClient,
+    private readonly bidding: BiddingService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
@@ -104,19 +112,47 @@ export class PaymentsService {
     };
   }
 
-  /** Records the deposit, opens it at Chapa and returns where the user pays. No money moves here. */
+  /**
+   * Records the deposit, opens it at Chapa and returns where the user pays. No money moves here.
+   *
+   * With `bid` it is a payment for bids ("pay and bid"): the bids are checked now, so nobody pays for bids that
+   * would be refused, the amount must be exactly their fees, and once the payment is confirmed the money goes
+   * into the wallet and the bids are placed from it. Should they be refused by then, the money stays in the wallet.
+   */
   async start(
     user: AuthenticatedUser,
     idempotencyKey: string,
     amountMinor: bigint,
     client: ClientInfo,
+    bid?: BidToPay,
   ): Promise<{ deposit: DepositDto; replayed: boolean }> {
     this.assertEnabled();
     if (isStaff(user.roles)) {
       throw new AppException(HttpStatus.FORBIDDEN, ErrorCode.FORBIDDEN, 'Staff accounts cannot add money');
     }
     const currency = await this.currencies.resolve();
-    const { depositMinMinor: min, depositMaxMinor: max } = this.config.payments;
+
+    const earlier = await this.findByKey(user.id, idempotencyKey);
+    if (earlier) return this.replay(earlier, amountMinor, currency, bid);
+
+    const { depositMaxMinor: max } = this.config.payments;
+    // Bid fees can be smaller than the smallest deposit; a payment for bids is exactly what the bids cost.
+    let min = this.config.payments.depositMinMinor;
+    let auctionTitle: string | null = null;
+    if (bid) {
+      const auction = await this.bidding.check(user, bid.auctionId, bid.amountsMinor);
+      const fees = auction.bidFeeMinor * BigInt(bid.amountsMinor.length);
+      if (auction.currency !== currency.code || fees !== amountMinor) {
+        throw new AppException(
+          HttpStatus.UNPROCESSABLE_ENTITY,
+          ErrorCode.DEPOSIT_AMOUNT_INVALID,
+          `These bids cost ${auction.currency} ${formatMinor(fees, currency.minorUnits)}. Please check the amount and try again.`,
+          { expectedAmountMinor: fees.toString() },
+        );
+      }
+      min = 1n;
+      auctionTitle = auction.title;
+    }
     if (amountMinor < min || amountMinor > max) {
       throw new AppException(
         HttpStatus.UNPROCESSABLE_ENTITY,
@@ -126,9 +162,6 @@ export class PaymentsService {
         { currency: currency.code, minAmountMinor: min.toString(), maxAmountMinor: max.toString() },
       );
     }
-
-    const earlier = await this.findByKey(user.id, idempotencyKey);
-    if (earlier) return this.replay(earlier, amountMinor, currency);
 
     const { wallet } = await this.wallets.ensureWallet(user.id, currency.code);
     if (wallet.isFrozen) {
@@ -157,13 +190,15 @@ export class PaymentsService {
           amountMinor,
           currency: currency.code,
           idempotencyKey,
+          bidAuctionId: bid?.auctionId,
+          bidAmountsMinor: bid?.amountsMinor ?? [],
         },
       });
     } catch (error) {
       // Two requests with the same key at the same moment: the second one answers with the first one's deposit.
       const twin = isUniqueViolation(error) ? await this.findByKey(user.id, idempotencyKey) : null;
       if (!twin) throw error;
-      return this.replay(twin, amountMinor, currency);
+      return this.replay(twin, amountMinor, currency, bid);
     }
 
     const profile = await this.prisma.userProfile.findUnique({ where: { userId: user.id } });
@@ -182,7 +217,8 @@ export class PaymentsService {
         returnUrl: `${webAppUrl}/wallet/deposits/${payment.id}`,
         callbackUrl: publicApiUrl ? `${publicApiUrl}/${this.config.apiPrefix}/payments/chapa/callback` : undefined,
         title: 'LUB Auction',
-        description: 'Wallet deposit',
+        // Chapa allows letters, numbers, spaces and a few marks here; an auction title can hold anything.
+        description: auctionTitle ? 'Bid fees' : 'Wallet deposit',
       }));
     } catch (error) {
       const reason = error instanceof ChapaError ? error.message : 'The payment could not be opened';
@@ -210,7 +246,12 @@ export class PaymentsService {
         action: 'payment.deposit.start',
         entityType: 'payment_transaction',
         entityId: payment.id,
-        after: { reference: payment.merchantReference, amountMinor: amountMinor.toString(), currency: currency.code },
+        after: {
+          reference: payment.merchantReference,
+          amountMinor: amountMinor.toString(),
+          currency: currency.code,
+          ...(bid ? { bidAuctionId: bid.auctionId, bidCount: bid.amountsMinor.length } : {}),
+        },
         client,
       });
       return updated;
@@ -240,7 +281,7 @@ export class PaymentsService {
       where: { id, userId, direction: PaymentDirection.DEPOSIT },
     });
     if (!found) throw new AppException(HttpStatus.NOT_FOUND, ErrorCode.NOT_FOUND, 'Deposit not found');
-    const current = await this.settleQuietly(found);
+    const current = await this.placePaidBids(await this.settleQuietly(found));
     return this.toDto(current, await this.currencies.resolve(current.currency, true));
   }
 
@@ -338,6 +379,19 @@ export class PaymentsService {
       orderBy: [{ lastCheckedAt: { sort: 'asc', nulls: 'first' } }, { createdAt: 'asc' }],
       take: SWEEP_BATCH,
     });
+    // Paid, but the bids were not placed yet (the server stopped in between): place them now.
+    const paid = await this.prisma.paymentTransaction.findMany({
+      where: {
+        direction: PaymentDirection.DEPOSIT,
+        status: PaymentStatus.SUCCEEDED,
+        bidAuctionId: { not: null },
+        bidSubmissionId: null,
+        bidError: null,
+      },
+      take: SWEEP_BATCH,
+    });
+    for (const payment of paid) await this.placePaidBids(payment);
+
     for (const payment of waiting) {
       if (!isDue(payment, now)) continue;
       try {
@@ -458,7 +512,54 @@ export class PaymentsService {
       minorUnits: currency.minorUnits,
       testMode: this.testMode,
     });
-    return this.ledger.run((tx) => this.apply(tx, payment.id, outcome, answer, options));
+    const after = await this.ledger.run((tx) => this.apply(tx, payment.id, outcome, answer, options));
+    return this.placePaidBids(after);
+  }
+
+  /**
+   * Pay and bid, second half: the payment is in the wallet, so the bids are placed from it. Placing is idempotent
+   * (keyed on the payment), so the webhook, the return page and the sweep can all try. A refusal is final and
+   * kept; the money then stays in the wallet. Any other failure is left for the next try.
+   */
+  private async placePaidBids(payment: PaymentTransaction): Promise<PaymentTransaction> {
+    if (
+      payment.status !== PaymentStatus.SUCCEEDED ||
+      !payment.bidAuctionId ||
+      payment.bidSubmissionId ||
+      payment.bidError
+    ) {
+      return payment;
+    }
+    const bidder: AuthenticatedUser = {
+      id: payment.userId,
+      phoneNumber: '',
+      roles: [RoleName.USER],
+      sessionId: '',
+      mustChangePassword: false,
+    };
+    try {
+      const { submission } = await this.bidding.place(
+        bidder,
+        payment.bidAuctionId,
+        payment.bidAmountsMinor.map(String),
+        `pay:${payment.id}`,
+        {},
+      );
+      await this.prisma.paymentTransaction.updateMany({
+        where: { id: payment.id, bidSubmissionId: null },
+        data: { bidSubmissionId: submission.id },
+      });
+    } catch (error) {
+      if (!(error instanceof AppException)) {
+        this.logger.warn({ err: error, paymentId: payment.id }, 'Paid bids could not be placed yet');
+        return payment;
+      }
+      await this.prisma.paymentTransaction.updateMany({
+        where: { id: payment.id, bidSubmissionId: null, bidError: null },
+        data: { bidError: error.message.slice(0, 500) },
+      });
+    }
+    return this.prisma.paymentTransaction.findUniqueOrThrow({ where: { id: payment.id } });
   }
 
   /** As {@link settle}, for callers that show the deposit either way: a failed check leaves it as it was. */
@@ -630,8 +731,13 @@ export class PaymentsService {
     earlier: PaymentTransaction,
     amountMinor: bigint,
     currency: Currency,
+    bid?: BidToPay,
   ): { deposit: DepositDto; replayed: boolean } {
-    if (earlier.direction !== PaymentDirection.DEPOSIT || earlier.amountMinor !== amountMinor) {
+    const sameBid =
+      (earlier.bidAuctionId ?? undefined) === bid?.auctionId &&
+      earlier.bidAmountsMinor.length === (bid?.amountsMinor.length ?? 0) &&
+      earlier.bidAmountsMinor.every((amount, i) => amount === bid?.amountsMinor[i]);
+    if (earlier.direction !== PaymentDirection.DEPOSIT || earlier.amountMinor !== amountMinor || !sameBid) {
       throw new AppException(
         HttpStatus.UNPROCESSABLE_ENTITY,
         ErrorCode.IDEMPOTENCY_KEY_REUSED,
@@ -672,6 +778,16 @@ export class PaymentsService {
       confirmedAt: payment.verifiedAt,
       expiresAt: new Date(payment.createdAt.getTime() + this.config.payments.depositExpiryMinutes * 60_000),
       createdAt: payment.createdAt,
+      bid: payment.bidAuctionId
+        ? {
+            auctionId: payment.bidAuctionId,
+            amountsMinor: payment.bidAmountsMinor.map(String),
+            amounts: payment.bidAmountsMinor.map((amount) => formatMinor(amount, minorUnits)),
+            state: payment.bidSubmissionId ? 'PLACED' : payment.bidError ? 'REFUSED' : 'WAITING',
+            submissionId: payment.bidSubmissionId,
+            error: payment.bidError,
+          }
+        : null,
     };
   }
 
