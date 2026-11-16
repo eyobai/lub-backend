@@ -555,7 +555,8 @@ See `.env.example` for the full list.
 
 - Withdrawals (Chapa transfers with a staff approval step), and taking money back after a refund
   or reversal, which is left to finance staff for now.
-- Deposits have been run against a simulated Chapa only until a test key is supplied.
+- Deposits: with a live key, opening a payment and verifying it were checked against Chapa itself. A paid
+  deposit and Chapa's webhook arriving from the internet have only been run against a simulated Chapa.
 - SMS, email or push delivery of notifications: the abstraction exists, no provider does.
 - What happens to the prize and the fees when a winner is rejected.
 - The `EXTEND_AUCTION` no-unique-bid policy.

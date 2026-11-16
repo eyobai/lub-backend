@@ -101,7 +101,7 @@ mode (test or live) all match.
 | ------ | ------------------------------------ | ----------------------- | --------------------------------------------------------------- |
 | GET    | `/wallet/deposit-options`            | Bearer                  | Whether deposits are on, the limits, and test or live mode      |
 | POST   | `/wallet/deposits`                   | Bearer                  | Start a deposit (`Idempotency-Key`); answers with `checkoutUrl` |
-| GET    | `/wallet/deposits`                   | Bearer                  | My deposits, newest first, a page at a time                      |
+| GET    | `/wallet/deposits`                   | Bearer                  | My deposits, newest first, a page at a time                     |
 | GET    | `/wallet/deposits/:id`               | Bearer                  | One of my deposits; checks with Chapa while it is unconfirmed   |
 | POST   | `/payments/chapa/webhook`            | Chapa signature         | Chapa's event notifications                                     |
 | GET    | `/payments/chapa/callback`           | Public                  | Chapa's call after checkout; only triggers a verification       |
@@ -114,11 +114,12 @@ The flow for a client: `POST /wallet/deposits` with `{ "amountMinor": "50000" }`
 `checkoutUrl`, and when they come back to `<WEB_APP_URL>/wallet/deposits/<id>` read
 `GET /wallet/deposits/:id` until `status` is no longer `PENDING`.
 
-To try it locally in Chapa's test mode, set in `.env`:
+To try it locally, set in `.env` (a `CHASECK-...` key is live and takes real money; a `CHASECK_TEST-...` key
+is Chapa's test mode):
 
 ```
 PAYMENT_PROVIDER=chapa
-CHAPA_SECRET_KEY=<your CHASECK_TEST-... key>
+CHAPA_SECRET_KEY=<your Chapa secret key>
 CHAPA_WEBHOOK_SECRET=<any 16+ random characters>
 WEB_APP_URL=http://localhost:5173
 ```

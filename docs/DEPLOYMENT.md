@@ -1,8 +1,9 @@
 # Deployment notes
 
 How to run the backend in production, and what was verified before hand-off (Phase 11).
-Deposits through Chapa are built and tested in test mode only; withdrawals and SMS delivery are not
-built. Do not take real money until the items under "Payments" below are done.
+Deposits through Chapa are built. With a live key, opening a payment and asking Chapa about it have been
+checked against Chapa itself; a paid deposit has not been run end to end yet. Withdrawals and SMS delivery
+are not built. Do the items under "Payments" below before opening deposits to the public.
 
 ## What you need
 
@@ -46,19 +47,20 @@ the repository as `docs/openapi.json` (`npm run openapi` regenerates it).
 
 Deposits are off (`PAYMENT_PROVIDER=none`) until these are set:
 
-| Variable               | Value                                                                               |
-| ---------------------- | ----------------------------------------------------------------------------------- |
-| `PAYMENT_PROVIDER`     | `chapa`                                                                             |
-| `CHAPA_SECRET_KEY`     | From the Chapa dashboard. `CHASECK_TEST-…` is test mode; no real money moves        |
-| `CHAPA_WEBHOOK_SECRET` | The "secret hash" entered in the Chapa dashboard's webhook settings, 16+ characters |
-| `PUBLIC_API_URL`       | This API's public HTTPS address, for example `https://api.example.com`              |
-| `WEB_APP_URL`          | The website's public address; users return there after paying                       |
+| Variable               | Value                                                                                |
+| ---------------------- | ------------------------------------------------------------------------------------ |
+| `PAYMENT_PROVIDER`     | `chapa`                                                                              |
+| `CHAPA_SECRET_KEY`     | From the Chapa dashboard. `CHASECK-…` is live (real money), `CHASECK_TEST-…` is test |
+| `CHAPA_WEBHOOK_SECRET` | The "secret hash" entered in the Chapa dashboard's webhook settings, 16+ characters  |
+| `PUBLIC_API_URL`       | This API's public HTTPS address, for example `https://api.example.com`               |
+| `WEB_APP_URL`          | The website's public address; users return there after paying                        |
 
 In the Chapa dashboard set the webhook URL to `<PUBLIC_API_URL>/api/v1/payments/chapa/webhook` and the
 secret hash to the same value as `CHAPA_WEBHOOK_SECRET`. With `NODE_ENV=production` the API refuses
 `http://` addresses for Chapa, `PUBLIC_API_URL` and `WEB_APP_URL`.
 
-Before switching to a live key:
+The key decides the mode: nothing else switches between test and live. Keep the key only in the server's
+environment, never in the repository. With a live key:
 
 - Chapa must have approved the business account, and the legal review noted in `docs/ARCHITECTURE.md`
   must be done.
