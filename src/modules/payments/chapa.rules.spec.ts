@@ -1,13 +1,5 @@
 import { createHmac } from 'node:crypto';
-import {
-  checkoutUrlAllowed,
-  decimalToMinor,
-  isLocalHttpUrl,
-  isTestKey,
-  judgeVerification,
-  minorToDecimal,
-  webhookSignatureValid,
-} from './chapa.rules';
+import { decimalToMinor, isTestKey, judgeVerification, minorToDecimal, webhookSignatureValid } from './chapa.rules';
 import type { ChapaVerification, ExpectedPayment } from './chapa.rules';
 
 const expected: ExpectedPayment = {
@@ -153,42 +145,5 @@ describe('isTestKey', () => {
     expect(isTestKey('CHASECK-abc')).toBe(false);
     expect(isTestKey('CHAPUBK_TEST-abc')).toBe(false);
     expect(isTestKey('')).toBe(false);
-  });
-});
-
-describe('isLocalHttpUrl', () => {
-  it('is true only for plain http on this machine', () => {
-    expect(isLocalHttpUrl('http://localhost:4010')).toBe(true);
-    expect(isLocalHttpUrl('http://127.0.0.1:4010/checkout/x')).toBe(true);
-    expect(isLocalHttpUrl('http://[::1]:4010')).toBe(true);
-    expect(isLocalHttpUrl('https://localhost:4010')).toBe(false);
-    expect(isLocalHttpUrl('http://localhost.evil.example')).toBe(false);
-    expect(isLocalHttpUrl('http://evil.example/localhost')).toBe(false);
-    expect(isLocalHttpUrl('http://localhost@evil.example')).toBe(false);
-    expect(isLocalHttpUrl('http://192.168.1.10:4010')).toBe(false);
-    expect(isLocalHttpUrl('not an address')).toBe(false);
-  });
-});
-
-describe('checkoutUrlAllowed', () => {
-  it('accepts https whether or not the simulator is in use', () => {
-    expect(checkoutUrlAllowed('https://checkout.chapa.co/checkout/payment/abc', false)).toBe(true);
-    expect(checkoutUrlAllowed('https://checkout.chapa.co/checkout/payment/abc', true)).toBe(true);
-  });
-
-  it('accepts a plain-http page on this machine only with the simulator', () => {
-    expect(checkoutUrlAllowed('http://localhost:4010/checkout/abc', true)).toBe(true);
-    expect(checkoutUrlAllowed('http://localhost:4010/checkout/abc', false)).toBe(false);
-  });
-
-  it('refuses everything else', () => {
-    for (const simulator of [true, false]) {
-      expect(checkoutUrlAllowed('http://checkout.chapa.co/x', simulator)).toBe(false);
-      expect(checkoutUrlAllowed('javascript:alert(1)', simulator)).toBe(false);
-      expect(checkoutUrlAllowed('//localhost:4010/x', simulator)).toBe(false);
-      expect(checkoutUrlAllowed('', simulator)).toBe(false);
-      expect(checkoutUrlAllowed(undefined, simulator)).toBe(false);
-      expect(checkoutUrlAllowed(42, simulator)).toBe(false);
-    }
   });
 });

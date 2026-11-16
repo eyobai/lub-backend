@@ -96,29 +96,3 @@ export function webhookSignatureValid(
 
 /** Test keys carry `_TEST` in their prefix, e.g. `CHASECK_TEST-…`. */
 export const isTestKey = (secretKey: string): boolean => /^CHASECK_TEST/i.test(secretKey);
-
-const LOOPBACK_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
-
-/** True for a plain-http address on this machine, which is where the local Chapa simulator runs. */
-export function isLocalHttpUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return url.protocol === 'http:' && LOOPBACK_HOSTS.includes(url.hostname);
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Users are only ever sent to an https checkout page. The one exception is the local simulator: a plain-http
- * page on this machine, and only when the caller says the simulator is what is being talked to.
- */
-export function checkoutUrlAllowed(value: unknown, simulator: boolean): value is string {
-  if (typeof value !== 'string') return false;
-  try {
-    if (new URL(value).protocol === 'https:') return true;
-  } catch {
-    return false;
-  }
-  return simulator && isLocalHttpUrl(value);
-}

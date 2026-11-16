@@ -45,7 +45,6 @@ To run the API in Docker as well: `docker compose --profile app up -d --build`.
 | `npm run db:migrate`    | Create and apply a migration in development                                            |
 | `npm run db:deploy`     | Apply pending migrations                                                               |
 | `npm run seed`          | Create the first SUPER_ADMIN from `SEED_ADMIN_PHONE` / `SEED_ADMIN_PASSWORD`           |
-| `npm run chapa:sim`     | A stand-in for Chapa on this machine, for trying deposits without a Chapa account      |
 
 Production deployment, measured capacity and the security review are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
@@ -102,7 +101,7 @@ mode (test or live) all match.
 | ------ | ------------------------------------ | ----------------------- | --------------------------------------------------------------- |
 | GET    | `/wallet/deposit-options`            | Bearer                  | Whether deposits are on, the limits, and test or live mode      |
 | POST   | `/wallet/deposits`                   | Bearer                  | Start a deposit (`Idempotency-Key`); answers with `checkoutUrl` |
-| GET    | `/wallet/deposits`                   | Bearer                  | My deposits, newest first, a page at a time                     |
+| GET    | `/wallet/deposits`                   | Bearer                  | My deposits, newest first, a page at a time                      |
 | GET    | `/wallet/deposits/:id`               | Bearer                  | One of my deposits; checks with Chapa while it is unconfirmed   |
 | POST   | `/payments/chapa/webhook`            | Chapa signature         | Chapa's event notifications                                     |
 | GET    | `/payments/chapa/callback`           | Public                  | Chapa's call after checkout; only triggers a verification       |
@@ -115,30 +114,7 @@ The flow for a client: `POST /wallet/deposits` with `{ "amountMinor": "50000" }`
 `checkoutUrl`, and when they come back to `<WEB_APP_URL>/wallet/deposits/<id>` read
 `GET /wallet/deposits/:id` until `status` is no longer `PENDING`.
 
-### Trying deposits without a Chapa account
-
-`npm run chapa:sim` starts a stand-in for Chapa on this machine: it answers the API's two Chapa calls,
-shows a checkout page with **Pay** and **Payment fails** buttons, and reports the result with a signed
-webhook, as Chapa does. No real Chapa is contacted and no money moves. Set in `.env`:
-
-```
-PAYMENT_PROVIDER=chapa
-CHAPA_SECRET_KEY=CHASECK_TEST-local-simulator
-CHAPA_WEBHOOK_SECRET=local-simulator-webhook-secret
-CHAPA_BASE_URL=http://localhost:4010
-WEB_APP_URL=http://localhost:5173
-```
-
-Then run the API (`npm run start:dev`) and, in a second terminal, `npm run chapa:sim`. On the website,
-Wallet > Add money > Continue to payment opens the simulated checkout. `http://localhost:4010` lists the
-payments opened since the simulator started; it forgets them when it stops.
-
-A plain-http checkout page is accepted only for this: `CHAPA_BASE_URL` must itself be a plain-http address
-on this machine, and `NODE_ENV=production` refuses such an address.
-
-### Trying deposits in Chapa's test mode
-
-Set in `.env`:
+To try it locally in Chapa's test mode, set in `.env`:
 
 ```
 PAYMENT_PROVIDER=chapa
