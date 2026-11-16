@@ -86,9 +86,8 @@ export const envSchema = Joi.object({
   CHAPA_SECRET_KEY: Joi.string()
     .allow('')
     .when('PAYMENT_PROVIDER', { is: 'chapa', then: Joi.string().min(10).invalid('').required() }),
-  CHAPA_WEBHOOK_SECRET: Joi.string()
-    .allow('')
-    .when('PAYMENT_PROVIDER', { is: 'chapa', then: Joi.string().min(16).invalid('').required() }),
+  // Optional: without it every webhook is refused and deposits are confirmed on return and by the re-check job.
+  CHAPA_WEBHOOK_SECRET: Joi.string().allow('').min(16),
   CHAPA_BASE_URL: Joi.string()
     .uri({ scheme: ['http', 'https'] })
     .default('https://api.chapa.co'),

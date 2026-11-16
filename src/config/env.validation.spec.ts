@@ -83,9 +83,16 @@ describe('environment validation', () => {
       expect(validateEnv({ ...base, ...chapa })).toMatchObject({ PAYMENT_PROVIDER: 'chapa' });
     });
 
-    it.each(['CHAPA_SECRET_KEY', 'CHAPA_WEBHOOK_SECRET', 'WEB_APP_URL'])('refuses Chapa without %s', (key) => {
+    it.each(['CHAPA_SECRET_KEY', 'WEB_APP_URL'])('refuses Chapa without %s', (key) => {
       expect(() => validateEnv({ ...base, ...chapa, [key]: '' })).toThrow(key);
     });
+
+    it.each([{ CHAPA_WEBHOOK_SECRET: '' }, { CHAPA_WEBHOOK_SECRET: undefined }])(
+      'accepts Chapa without a webhook secret: %o',
+      (override) => {
+        expect(validateEnv({ ...base, ...chapa, ...override })).toMatchObject({ PAYMENT_PROVIDER: 'chapa' });
+      },
+    );
 
     it('refuses a short webhook secret and an unknown provider', () => {
       expect(() => validateEnv({ ...base, ...chapa, CHAPA_WEBHOOK_SECRET: 'short' })).toThrow('CHAPA_WEBHOOK_SECRET');

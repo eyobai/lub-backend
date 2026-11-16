@@ -51,12 +51,14 @@ Deposits are off (`PAYMENT_PROVIDER=none`) until these are set:
 | ---------------------- | ------------------------------------------------------------------------------------ |
 | `PAYMENT_PROVIDER`     | `chapa`                                                                              |
 | `CHAPA_SECRET_KEY`     | From the Chapa dashboard. `CHASECK-…` is live (real money), `CHASECK_TEST-…` is test |
-| `CHAPA_WEBHOOK_SECRET` | The "secret hash" entered in the Chapa dashboard's webhook settings, 16+ characters  |
+| `CHAPA_WEBHOOK_SECRET` | Optional. The "secret hash" from the Chapa dashboard's webhook settings, 16+ chars   |
 | `PUBLIC_API_URL`       | This API's public HTTPS address, for example `https://api.example.com`               |
 | `WEB_APP_URL`          | The website's public address; users return there after paying                        |
 
 In the Chapa dashboard set the webhook URL to `<PUBLIC_API_URL>/api/v1/payments/chapa/webhook` and the
-secret hash to the same value as `CHAPA_WEBHOOK_SECRET`. With `NODE_ENV=production` the API refuses
+secret hash to the same value as `CHAPA_WEBHOOK_SECRET`. Without that secret the API refuses every
+webhook; deposits are still confirmed when the user returns from checkout and by the re-check job, so a
+payer who closes the browser waits up to `PAYMENT_SWEEP_INTERVAL_SECONDS` longer. With `NODE_ENV=production` the API refuses
 `http://` addresses for Chapa, `PUBLIC_API_URL` and `WEB_APP_URL`.
 
 The key decides the mode: nothing else switches between test and live. Keep the key only in the server's

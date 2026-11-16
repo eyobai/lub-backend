@@ -120,12 +120,11 @@ is Chapa's test mode):
 ```
 PAYMENT_PROVIDER=chapa
 CHAPA_SECRET_KEY=<your Chapa secret key>
-CHAPA_WEBHOOK_SECRET=<any 16+ random characters>
 WEB_APP_URL=http://localhost:5173
 ```
 
-Chapa cannot reach a laptop, so leave `PUBLIC_API_URL` empty; the deposit is then confirmed when the
-user returns from checkout, and by the background check once a minute. Withdrawals are not built.
+Chapa cannot reach a laptop, so leave `PUBLIC_API_URL` and `CHAPA_WEBHOOK_SECRET` empty; the deposit is
+then confirmed when the user returns from checkout, and by the background check once a minute. Withdrawals are not built.
 
 ## Product and auction endpoints
 
