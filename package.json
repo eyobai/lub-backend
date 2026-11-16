@@ -24,7 +24,8 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "seed": "ts-node src/scripts/seed-admin.ts",
-    "openapi": "ts-node src/scripts/export-openapi.ts"
+    "openapi": "ts-node src/scripts/export-openapi.ts",
+    "chapa:sim": "node scripts/chapa-simulator.mjs"
   },
   "dependencies": {
     "@nest-lab/throttler-storage-redis": "^1.2.0",

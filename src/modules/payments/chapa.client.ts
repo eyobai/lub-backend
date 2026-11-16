@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { APP_CONFIG } from '../../config/configuration';
 import type { AppConfig } from '../../config/configuration';
+import { checkoutUrlAllowed, isLocalHttpUrl } from './chapa.rules';
 import type { ChapaVerification } from './chapa.rules';
 
 export interface ChapaInitializeInput {
@@ -55,8 +56,8 @@ export class ChapaClient {
       customization: { title: input.title, description: input.description },
     });
     const data = body.data as { checkout_url?: unknown } | null | undefined;
-    const url = typeof data?.checkout_url === 'string' ? data.checkout_url : '';
-    if (status >= 200 && status < 300 && /^https:\/\//.test(url)) return { checkoutUrl: url };
+    const url = data?.checkout_url;
+    if (status >= 200 && status < 300 && checkoutUrlAllowed(url, this.simulated)) return { checkoutUrl: url };
     throw new ChapaError(`Chapa did not open the transaction: ${describe(body.message)}`, status < 500, status);
   }
 
@@ -70,6 +71,11 @@ export class ChapaClient {
       throw new ChapaError(`Chapa could not verify the transaction: ${describe(body.message)}`, false, status);
     }
     return null;
+  }
+
+  /** The local Chapa simulator (`npm run chapa:sim`) is in use: never in production, where its address is refused. */
+  private get simulated(): boolean {
+    return this.config.env !== 'production' && isLocalHttpUrl(this.config.payments.chapa.baseUrl);
   }
 
   private async request(

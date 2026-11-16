@@ -88,6 +88,40 @@ describe('ChapaClient', () => {
       await expect(client.initialize(input)).rejects.toBeInstanceOf(ChapaError);
     });
 
+    describe('with the local simulator', () => {
+      const local = 'http://localhost:4010/checkout/LUB-0123456789ABCDEFGHJK';
+      const withBase = (env: AppConfig['env'], baseUrl: string) =>
+        new ChapaClient({ env, payments: { chapa: { ...config.payments.chapa, baseUrl } } } as AppConfig);
+
+      it('accepts a plain-http checkout page on this machine', async () => {
+        answer(200, { status: 'success', data: { checkout_url: local } });
+        await expect(withBase('development', 'http://localhost:4010').initialize(input)).resolves.toEqual({
+          checkoutUrl: local,
+        });
+      });
+
+      it('still refuses a plain-http page anywhere else', async () => {
+        answer(200, { status: 'success', data: { checkout_url: 'http://evil.test/pay' } });
+        await expect(withBase('development', 'http://localhost:4010').initialize(input)).rejects.toBeInstanceOf(
+          ChapaError,
+        );
+      });
+
+      it('refuses the local page when Chapa itself is the provider', async () => {
+        answer(200, { status: 'success', data: { checkout_url: local } });
+        await expect(withBase('development', 'https://api.chapa.co').initialize(input)).rejects.toBeInstanceOf(
+          ChapaError,
+        );
+      });
+
+      it('refuses the local page in production', async () => {
+        answer(200, { status: 'success', data: { checkout_url: local } });
+        await expect(withBase('production', 'http://localhost:4010').initialize(input)).rejects.toBeInstanceOf(
+          ChapaError,
+        );
+      });
+    });
+
     it('reports a Chapa outage as not refused', async () => {
       answer(502, '<html>Bad gateway</html>');
       await expect(client.initialize(input)).rejects.toMatchObject({ refused: false, httpStatus: 502 });
