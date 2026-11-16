@@ -53,7 +53,14 @@ export interface AppConfig {
     publicApiUrl: string;
     /** The website's address, where users land after paying, without a trailing slash. */
     webAppUrl: string;
-    chapa: { secretKey: string; webhookSecret: string; baseUrl: string; timeoutMs: number };
+    chapa: {
+      secretKey: string;
+      webhookSecret: string;
+      baseUrl: string;
+      timeoutMs: number;
+      /** Mobile wallets charged without leaving the site (Chapa direct charge). Empty: only the checkout page. */
+      directChargeMethods: string[];
+    };
   };
 }
 
@@ -129,6 +136,10 @@ export function configuration(): { app: AppConfig } {
           webhookSecret: e.CHAPA_WEBHOOK_SECRET ?? '',
           baseUrl: (e.CHAPA_BASE_URL ?? 'https://api.chapa.co').replace(/\/+$/, ''),
           timeoutMs: num('CHAPA_TIMEOUT_MS', 15000),
+          directChargeMethods: (e.CHAPA_DIRECT_CHARGE_METHODS ?? 'telebirr,mpesa,cbebirr,ebirr')
+            .split(',')
+            .map((method) => method.trim())
+            .filter(Boolean),
         },
       },
     },

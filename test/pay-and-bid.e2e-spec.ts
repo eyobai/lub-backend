@@ -210,6 +210,82 @@ describe('Pay and bid through Chapa', () => {
     expect(chapa.initializeCalls).toBe(1);
   });
 
+  describe('without leaving the site (direct charge)', () => {
+    const charge = (user: Account, auctionId: string, charge: object, amountsMinor = ['500']) =>
+      t
+        .post('/wallet/deposits', { amountMinor: '750', bid: { auctionId, amountsMinor }, charge }, user.token)
+        .set('Idempotency-Key', randomUUID());
+
+    it('sends the request to the phone instead of opening the checkout page, then places the bids', async () => {
+      const auctionId = await liveAuction();
+      const user = await account();
+
+      const res = await charge(user, auctionId, { method: 'telebirr', phoneNumber: '+251 911-22-33-44' }).expect(201);
+
+      expect(res.body).toMatchObject({ status: 'PENDING', checkoutUrl: null, chargeMethod: 'telebirr' });
+      expect(chapa.chargeCalls).toBe(1);
+      expect(chapa.initializeCalls).toBe(0);
+      expect(chapa.chargeType).toBe('telebirr');
+      expect(chapa.last().request).toMatchObject({
+        amount: '7.50',
+        currency: 'ETB',
+        tx_ref: res.body.reference,
+        mobile: '0911223344',
+      });
+
+      chapa.pay(res.body.reference);
+      const after = await read(user, res.body.id);
+      expect(after.status).toBe(PaymentStatus.SUCCEEDED);
+      expect(after.bid.state).toBe('PLACED');
+      expect((await myBids(user, auctionId)).map((b) => b.amountMinor)).toEqual([500n]);
+      await expectBooksToBalance();
+    });
+
+    it("uses the account's own number when none is given", async () => {
+      const auctionId = await liveAuction();
+      const user = await account();
+      await charge(user, auctionId, { method: 'mpesa' }).expect(201);
+      const own = (await t.prisma.user.findUniqueOrThrow({ where: { id: user.id } })).phoneNumber;
+      expect(chapa.last().request.mobile).toBe(`0${own.slice(4)}`);
+      expect(chapa.chargeType).toBe('mpesa');
+    });
+
+    it('refuses a wallet that is not offered, or a number that is not a mobile number, before asking Chapa', async () => {
+      const auctionId = await liveAuction();
+      const user = await account();
+      const unknown = await charge(user, auctionId, { method: 'paypal' });
+      expect(unknown.status).toBe(422);
+      expect(unknown.body.details).toEqual({ directChargeMethods: ['telebirr', 'mpesa', 'cbebirr', 'ebirr'] });
+      const badPhone = await charge(user, auctionId, { method: 'telebirr', phoneNumber: '0111234567' });
+      expect(badPhone.status).toBe(422);
+      expect(chapa.chargeCalls).toBe(0);
+    });
+
+    it('says so, and takes nothing, when Chapa will not send the request', async () => {
+      const auctionId = await liveAuction();
+      const user = await account();
+      chapa.refuseInitialize = 'Invalid mobile number';
+
+      const res = await charge(user, auctionId, { method: 'telebirr' });
+
+      expect(res.status).toBe(502);
+      expect(res.body).toMatchObject({ error: 'PAYMENT_PROVIDER_ERROR', details: { directCharge: true } });
+      expect(res.body.message).not.toContain('Invalid mobile number');
+      const payment = await t.prisma.paymentTransaction.findFirstOrThrow({ where: { userId: user.id } });
+      expect(payment.status).toBe(PaymentStatus.FAILED);
+      expect(payment.failureReason).toContain('Invalid mobile number');
+    });
+
+    it('gives up on a wallet that wants a one-time code typed in', async () => {
+      const auctionId = await liveAuction();
+      const user = await account();
+      chapa.chargeAuthType = 'otp';
+      const res = await charge(user, auctionId, { method: 'cbebirr' });
+      expect(res.status).toBe(502);
+      expect(res.body.details).toEqual({ directCharge: true });
+    });
+  });
+
   it('leaves an ordinary deposit as it was', async () => {
     const user = await account();
     const res = await t

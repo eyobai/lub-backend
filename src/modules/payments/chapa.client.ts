@@ -18,6 +18,20 @@ export interface ChapaInitializeInput {
   description: string;
 }
 
+export interface ChapaDirectChargeInput {
+  txRef: string;
+  /** Decimal text, e.g. "125.50". */
+  amount: string;
+  currency: string;
+  /** The wallet's phone number, 09xxxxxxxx or 07xxxxxxxx. */
+  mobile: string;
+  /** Chapa's name for the wallet, e.g. "telebirr". */
+  type: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+}
+
 /** Chapa could not be reached or gave an answer that cannot be used. `refused` means Chapa itself said no. */
 export class ChapaError extends Error {
   constructor(
@@ -58,6 +72,28 @@ export class ChapaClient {
     const url = typeof data?.checkout_url === 'string' ? data.checkout_url : '';
     if (status >= 200 && status < 300 && /^https:\/\//.test(url)) return { checkoutUrl: url };
     throw new ChapaError(`Chapa did not open the transaction: ${describe(body.message)}`, status < 500, status);
+  }
+
+  /**
+   * Direct charge: Chapa asks the wallet (telebirr, M-Pesa, …) to send the payer a request to approve on their
+   * phone, and nobody leaves the site. Whether it was paid is learnt the usual way, with {@link verify}.
+   * `authType` is how the payer approves, as Chapa names it (a phone prompt, or a code).
+   */
+  async directCharge(input: ChapaDirectChargeInput): Promise<{ authType: string | null }> {
+    const { status, body } = await this.request('POST', `/v1/charges?type=${encodeURIComponent(input.type)}`, {
+      amount: input.amount,
+      currency: input.currency,
+      tx_ref: input.txRef,
+      mobile: input.mobile,
+      first_name: input.firstName,
+      last_name: input.lastName,
+      email: input.email,
+    });
+    if (status >= 200 && status < 300 && body.status === 'success') {
+      const data = body.data as { auth_type?: unknown } | null | undefined;
+      return { authType: typeof data?.auth_type === 'string' ? data.auth_type : null };
+    }
+    throw new ChapaError(`Chapa did not send the payment request: ${describe(body.message)}`, status < 500, status);
   }
 
   /** Asks Chapa for the current state of a transaction. Null when Chapa does not know the reference (yet). */

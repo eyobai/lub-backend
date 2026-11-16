@@ -21,7 +21,12 @@ export class FakeChapa {
   down = false;
   /** Refuse to open new payments, with this message. */
   refuseInitialize: string | null = null;
+  /** How a direct charge asks the payer to approve, as Chapa reports it. */
+  chargeAuthType = 'ussd';
   initializeCalls = 0;
+  chargeCalls = 0;
+  /** The `type` query parameter of the last direct charge. */
+  chargeType: string | null = null;
   verifyCalls = 0;
   private server!: Server;
 
@@ -47,7 +52,10 @@ export class FakeChapa {
     this.transactions.clear();
     this.down = false;
     this.refuseInitialize = null;
+    this.chargeAuthType = 'ussd';
     this.initializeCalls = 0;
+    this.chargeCalls = 0;
+    this.chargeType = null;
     this.verifyCalls = 0;
   }
 
@@ -91,7 +99,8 @@ export class FakeChapa {
   }
 
   private async handle(req: IncomingMessage): Promise<{ status: number; body: unknown }> {
-    const path = new URL(req.url ?? '/', 'http://fake').pathname;
+    const url = new URL(req.url ?? '/', 'http://fake');
+    const path = url.pathname;
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(chunk as Buffer);
     if (this.down) return { status: 500, body: { message: 'Internal server error', status: 'failed', data: null } };
@@ -116,6 +125,28 @@ export class FakeChapa {
           message: 'Hosted Link',
           status: 'success',
           data: { checkout_url: `https://checkout.chapa.co/checkout/payment/${txRef}` },
+        },
+      };
+    }
+
+    if (req.method === 'POST' && path === '/v1/charges') {
+      this.chargeCalls += 1;
+      this.chargeType = url.searchParams.get('type');
+      if (this.refuseInitialize) {
+        return { status: 400, body: { message: this.refuseInitialize, status: 'failed', data: null } };
+      }
+      const request = JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>;
+      const txRef = String(request.tx_ref);
+      this.transactions.set(txRef, { txRef, request, authorization: req.headers.authorization, verification: null });
+      return {
+        status: 200,
+        body: {
+          message: 'Charge initiated',
+          status: 'success',
+          data: {
+            auth_type: this.chargeAuthType,
+            meta: { message: 'Please approve on your phone', status: 'pending' },
+          },
         },
       };
     }

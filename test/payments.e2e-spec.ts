@@ -131,6 +131,7 @@ describe('Deposits through Chapa', () => {
         minorUnits: 2,
         minAmountMinor: '1000',
         maxAmountMinor: '5000000',
+        directChargeMethods: ['telebirr', 'mpesa', 'cbebirr', 'ebirr'],
       });
     });
   });

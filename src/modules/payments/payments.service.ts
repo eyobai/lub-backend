@@ -57,6 +57,12 @@ export interface SweepResult {
   closed: number;
 }
 
+/** Direct charge: the wallet to charge and the number it belongs to, as the payer typed it. */
+export interface ChargeRequest {
+  method: string;
+  phoneNumber?: string;
+}
+
 /** Pay and bid: the bids a deposit pays for. */
 export interface BidToPay {
   auctionId: string;
@@ -109,6 +115,7 @@ export class PaymentsService {
       minorUnits: currency.minorUnits,
       minAmountMinor: depositMinMinor.toString(),
       maxAmountMinor: depositMaxMinor.toString(),
+      directChargeMethods: this.enabled ? this.config.payments.chapa.directChargeMethods : [],
     };
   }
 
@@ -118,6 +125,9 @@ export class PaymentsService {
    * With `bid` it is a payment for bids ("pay and bid"): the bids are checked now, so nobody pays for bids that
    * would be refused, the amount must be exactly their fees, and once the payment is confirmed the money goes
    * into the wallet and the bids are placed from it. Should they be refused by then, the money stays in the wallet.
+   *
+   * With `charge` nobody leaves the site: instead of Chapa's checkout page, the wallet (telebirr, M-Pesa, …) sends
+   * the payer a request to approve on their phone. The deposit is confirmed exactly as any other.
    */
   async start(
     user: AuthenticatedUser,
@@ -125,6 +135,7 @@ export class PaymentsService {
     amountMinor: bigint,
     client: ClientInfo,
     bid?: BidToPay,
+    charge?: ChargeRequest,
   ): Promise<{ deposit: DepositDto; replayed: boolean }> {
     this.assertEnabled();
     if (isStaff(user.roles)) {
@@ -133,7 +144,27 @@ export class PaymentsService {
     const currency = await this.currencies.resolve();
 
     const earlier = await this.findByKey(user.id, idempotencyKey);
-    if (earlier) return this.replay(earlier, amountMinor, currency, bid);
+    if (earlier) return this.replay(earlier, amountMinor, currency, bid, charge);
+
+    let mobile: string | null = null;
+    if (charge) {
+      if (!this.config.payments.chapa.directChargeMethods.includes(charge.method)) {
+        throw new AppException(
+          HttpStatus.UNPROCESSABLE_ENTITY,
+          ErrorCode.VALIDATION_FAILED,
+          'This way of paying is not offered',
+          { directChargeMethods: this.config.payments.chapa.directChargeMethods },
+        );
+      }
+      mobile = walletPhone(charge.phoneNumber ?? user.phoneNumber) ?? null;
+      if (!mobile) {
+        throw new AppException(
+          HttpStatus.UNPROCESSABLE_ENTITY,
+          ErrorCode.VALIDATION_FAILED,
+          'Enter the phone number of the wallet, such as 0911223344',
+        );
+      }
+    }
 
     const { depositMaxMinor: max } = this.config.payments;
     // Bid fees can be smaller than the smallest deposit; a payment for bids is exactly what the bids cost.
@@ -190,6 +221,7 @@ export class PaymentsService {
           amountMinor,
           currency: currency.code,
           idempotencyKey,
+          chargeMethod: charge?.method,
           bidAuctionId: bid?.auctionId,
           bidAmountsMinor: bid?.amountsMinor ?? [],
         },
@@ -198,30 +230,59 @@ export class PaymentsService {
       // Two requests with the same key at the same moment: the second one answers with the first one's deposit.
       const twin = isUniqueViolation(error) ? await this.findByKey(user.id, idempotencyKey) : null;
       if (!twin) throw error;
-      return this.replay(twin, amountMinor, currency, bid);
+      return this.replay(twin, amountMinor, currency, bid, charge);
     }
 
     const profile = await this.prisma.userProfile.findUnique({ where: { userId: user.id } });
     const [firstName, ...rest] = (profile?.fullName ?? '').trim().split(/\s+/).filter(Boolean);
     const { publicApiUrl, webAppUrl } = this.config.payments;
-    let checkoutUrl: string;
+    let checkoutUrl: string | null = null;
     try {
-      ({ checkoutUrl } = await this.chapa.initialize({
-        txRef: payment.merchantReference,
-        amount: minorToDecimal(amountMinor, currency.minorUnits),
-        currency: currency.code,
-        phoneNumber: localPhone(user.phoneNumber),
-        firstName,
-        lastName: rest.join(' ') || undefined,
-        email: profile?.email ?? undefined,
-        returnUrl: `${webAppUrl}/wallet/deposits/${payment.id}`,
-        callbackUrl: publicApiUrl ? `${publicApiUrl}/${this.config.apiPrefix}/payments/chapa/callback` : undefined,
-        title: 'LUB Auction',
-        // Chapa allows letters, numbers, spaces and a few marks here; an auction title can hold anything.
-        description: auctionTitle ? 'Bid fees' : 'Wallet deposit',
-      }));
+      if (charge && mobile) {
+        const { authType } = await this.chapa.directCharge({
+          txRef: payment.merchantReference,
+          amount: minorToDecimal(amountMinor, currency.minorUnits),
+          currency: currency.code,
+          mobile,
+          type: charge.method,
+          firstName,
+          lastName: rest.join(' ') || undefined,
+          email: profile?.email ?? undefined,
+        });
+        // A code typed in on the site is not supported: only an approval on the phone completes here.
+        if (authType && /otp/i.test(authType)) {
+          throw new ChapaError(`Chapa asked for a one-time code (${authType})`, true);
+        }
+      } else
+        ({ checkoutUrl } = await this.chapa.initialize({
+          txRef: payment.merchantReference,
+          amount: minorToDecimal(amountMinor, currency.minorUnits),
+          currency: currency.code,
+          phoneNumber: localPhone(user.phoneNumber),
+          firstName,
+          lastName: rest.join(' ') || undefined,
+          email: profile?.email ?? undefined,
+          returnUrl: `${webAppUrl}/wallet/deposits/${payment.id}`,
+          callbackUrl: publicApiUrl ? `${publicApiUrl}/${this.config.apiPrefix}/payments/chapa/callback` : undefined,
+          title: 'LUB Auction',
+          // Chapa allows letters, numbers, spaces and a few marks here; an auction title can hold anything.
+          description: auctionTitle ? 'Bid fees' : 'Wallet deposit',
+        }));
     } catch (error) {
       const reason = error instanceof ChapaError ? error.message : 'The payment could not be opened';
+      if (charge && error instanceof ChapaError && error.refused) {
+        await this.prisma.paymentTransaction.update({
+          where: { id: payment.id },
+          data: { status: PaymentStatus.FAILED, failureReason: reason },
+        });
+        this.logger.warn({ paymentId: payment.id, reason }, 'Chapa did not send a direct charge');
+        throw new AppException(
+          HttpStatus.BAD_GATEWAY,
+          ErrorCode.PAYMENT_PROVIDER_ERROR,
+          'The payment request could not be sent to that phone. No money was taken.',
+          { directCharge: true },
+        );
+      }
       await this.prisma.paymentTransaction.update({
         where: { id: payment.id },
         data: { status: PaymentStatus.FAILED, failureReason: reason },
@@ -251,6 +312,7 @@ export class PaymentsService {
           amountMinor: amountMinor.toString(),
           currency: currency.code,
           ...(bid ? { bidAuctionId: bid.auctionId, bidCount: bid.amountsMinor.length } : {}),
+          ...(charge ? { chargeMethod: charge.method } : {}),
         },
         client,
       });
@@ -732,12 +794,19 @@ export class PaymentsService {
     amountMinor: bigint,
     currency: Currency,
     bid?: BidToPay,
+    charge?: ChargeRequest,
   ): { deposit: DepositDto; replayed: boolean } {
     const sameBid =
       (earlier.bidAuctionId ?? undefined) === bid?.auctionId &&
       earlier.bidAmountsMinor.length === (bid?.amountsMinor.length ?? 0) &&
       earlier.bidAmountsMinor.every((amount, i) => amount === bid?.amountsMinor[i]);
-    if (earlier.direction !== PaymentDirection.DEPOSIT || earlier.amountMinor !== amountMinor || !sameBid) {
+    const sameCharge = (earlier.chargeMethod ?? undefined) === charge?.method;
+    if (
+      earlier.direction !== PaymentDirection.DEPOSIT ||
+      earlier.amountMinor !== amountMinor ||
+      !sameBid ||
+      !sameCharge
+    ) {
       throw new AppException(
         HttpStatus.UNPROCESSABLE_ENTITY,
         ErrorCode.IDEMPOTENCY_KEY_REUSED,
@@ -773,6 +842,7 @@ export class PaymentsService {
       currency: payment.currency,
       minorUnits,
       checkoutUrl: payment.status === PaymentStatus.PENDING ? payment.checkoutUrl : null,
+      chargeMethod: payment.chargeMethod,
       failureReason: publicFailureReason(payment.status),
       walletTransactionId: payment.walletTransactionId,
       confirmedAt: payment.verifiedAt,
@@ -820,6 +890,13 @@ export function isDue(payment: Pick<PaymentTransaction, 'createdAt' | 'lastCheck
   const age = now.getTime() - payment.createdAt.getTime();
   const gap = Math.min(Math.max(age / 10, 30_000), 600_000);
   return now.getTime() - payment.lastCheckedAt.getTime() >= gap;
+}
+
+/** A wallet number as typed (0911…, 911…, +251911…, 251911…), in the 09/07 form Chapa wants; null if it is not one. */
+export function walletPhone(input: string): string | undefined {
+  const digits = input.replace(/[\s-]/g, '');
+  const match = /^(?:\+?251|0)?([79]\d{8})$/.exec(digits);
+  return match ? `0${match[1]}` : undefined;
 }
 
 /** Chapa accepts Ethiopian mobile numbers as 09xxxxxxxx or 07xxxxxxxx only; anything else is left out. */

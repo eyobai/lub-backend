@@ -92,6 +92,11 @@ export const envSchema = Joi.object({
     .uri({ scheme: ['http', 'https'] })
     .default('https://api.chapa.co'),
   CHAPA_TIMEOUT_MS: Joi.number().integer().min(1000).max(60000).default(15000),
+  // Comma-separated Chapa direct charge types offered in the site (no redirect). Empty turns direct charge off.
+  CHAPA_DIRECT_CHARGE_METHODS: Joi.string()
+    .allow('')
+    .pattern(/^[a-z_]+(,[a-z_]+)*$/)
+    .default('telebirr,mpesa,cbebirr,ebirr'),
   DEPOSIT_MIN_MINOR: Joi.string()
     .pattern(/^[1-9]\d{0,14}$/)
     .default('1000'),

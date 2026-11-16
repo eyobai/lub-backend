@@ -348,6 +348,8 @@ model PaymentTransaction {
   verifiedAt          DateTime?        @map("verified_at") @db.Timestamptz(3)
   /// Provider page where the user pays. Present once the provider has opened the transaction.
   checkoutUrl         String?          @map("checkout_url") @db.VarChar(1024)
+  /// Direct charge: the mobile wallet asked to send the payer a request on their phone (e.g. "telebirr"). Null: Chapa's checkout page.
+  chargeMethod        String?          @map("charge_method") @db.VarChar(32)
   /// When the provider was last asked for the state of this payment.
   lastCheckedAt       DateTime?        @map("last_checked_at") @db.Timestamptz(3)
   /// Set when a person must look: the provider reported something that does not match, or a refund/reversal after crediting.

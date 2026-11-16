@@ -74,7 +74,12 @@ export class DepositsController {
   )
   @ApiConflictResponse(error('With `bid`: AUCTION_NOT_OPEN, AUCTION_CLOSED, DUPLICATE_BID'))
   @ApiTooManyRequestsResponse(error('DEPOSIT_LIMIT_REACHED — too many deposits are waiting for payment'))
-  @ApiBadGatewayResponse(error('PAYMENT_PROVIDER_ERROR — the provider could not open the payment; nothing was taken'))
+  @ApiBadGatewayResponse(
+    error(
+      'PAYMENT_PROVIDER_ERROR — the provider could not open the payment, or (with `charge`, details.directCharge) ' +
+        'could not send the request to that phone; nothing was taken',
+    ),
+  )
   @ApiServiceUnavailableResponse(error('PAYMENTS_UNAVAILABLE — no payment provider is configured'))
   async start(
     @CurrentUser() user: AuthenticatedUser,
@@ -84,7 +89,15 @@ export class DepositsController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<DepositDto> {
     const bid = dto.bid && { auctionId: dto.bid.auctionId, amountsMinor: dto.bid.amountsMinor.map((a) => BigInt(a)) };
-    const { deposit, replayed } = await this.payments.start(user, idempotencyKey, BigInt(dto.amountMinor), client, bid);
+    const charge = dto.charge && { method: dto.charge.method, phoneNumber: dto.charge.phoneNumber };
+    const { deposit, replayed } = await this.payments.start(
+      user,
+      idempotencyKey,
+      BigInt(dto.amountMinor),
+      client,
+      bid,
+      charge,
+    );
     if (replayed) res.setHeader(REPLAYED_HEADER, 'true');
     return deposit;
   }

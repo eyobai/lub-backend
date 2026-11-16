@@ -40,6 +40,34 @@ export class DepositOptionsDto {
 
   @ApiProperty({ example: '5000000', description: `Largest single deposit. ${MINOR}` })
   maxAmountMinor!: string;
+
+  @ApiProperty({
+    type: [String],
+    example: ['telebirr', 'mpesa', 'cbebirr', 'ebirr'],
+    description:
+      'Mobile wallets that can be charged without leaving the site (`charge.method` when starting a deposit). ' +
+      "Empty: only Chapa's checkout page.",
+  })
+  directChargeMethods!: string[];
+}
+
+export class ChargeDto {
+  @ApiProperty({
+    example: 'telebirr',
+    description: 'One of `directChargeMethods` from the deposit options.',
+  })
+  @IsString()
+  @Matches(/^[a-z_]{2,32}$/)
+  method!: string;
+
+  @ApiPropertyOptional({
+    example: '0911223344',
+    description: "The wallet's phone number (0911…, +251911…). Defaults to the account's own number.",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  phoneNumber?: string;
 }
 
 export class BidToPayDto extends PlaceBidsDto {
@@ -68,6 +96,17 @@ export class StartDepositDto {
   @ValidateNested()
   @Type(() => BidToPayDto)
   bid?: BidToPayDto;
+
+  @ApiPropertyOptional({
+    type: ChargeDto,
+    description:
+      "Pay without leaving the site: instead of opening Chapa's checkout page (`checkoutUrl`), the wallet sends " +
+      'the payer a request to approve on their phone. Read the deposit again until it is SUCCEEDED or closed.',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ChargeDto)
+  charge?: ChargeDto;
 }
 
 export class PaidBidDto {
@@ -134,6 +173,15 @@ export class DepositDto {
     description: 'Provider page where the payer completes the payment. Only present while the deposit is PENDING.',
   })
   checkoutUrl!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: 'telebirr',
+    description:
+      "Direct charge: the wallet asked to send a request to the payer's phone. Null for a checkout-page payment.",
+  })
+  chargeMethod!: string | null;
 
   @ApiProperty({
     type: String,
