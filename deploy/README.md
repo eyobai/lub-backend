@@ -4,8 +4,8 @@ One Droplet runs everything: the API, PostgreSQL, Redis, and Caddy, which serves
 certificate it renews by itself. Only ports 22 (SSH), 80 and 443 are open; the database and Redis are not
 reachable from the internet.
 
-The examples use `api.lyubid.com` for the API, `lyubid.com` for the user site and `admin.lyubid.com` for the
-admin site. Replace them with your own domain.
+This guide uses `api.leyubid.com` for the API, `leyubid.com` for the user site and `admin.leyubid.com` for the
+admin site.
 
 ## 1. Create the Droplet
 
@@ -23,7 +23,7 @@ Where your domain's DNS is managed (in cPanel: _Domains → Zone Editor_), add:
 | ---- | ----- | ------------------ |
 | A    | `api` | the Droplet's IPv4 |
 
-Wait until `ping api.lyubid.com` answers with that address (usually a few minutes).
+Wait until `ping api.leyubid.com` answers with that address (usually a few minutes).
 
 ## 3. Prepare the server
 
@@ -62,7 +62,7 @@ docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.producti
   -e SEED_ADMIN_PHONE=+2519XXXXXXXX -e SEED_ADMIN_PASSWORD='a-strong-password' api node dist/scripts/seed-admin.js
 ```
 
-Check it: open `https://api.lyubid.com/health/ready` in a browser. It should answer with `"status":"ok"` and the database and Redis `"up"`.
+Check it: open `https://api.leyubid.com/health/ready` in a browser. It should answer with `"status":"ok"` and the database and Redis `"up"`.
 If the page does not load, see the logs:
 
 ```bash
@@ -71,7 +71,7 @@ docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.producti
 
 ## 6. Chapa
 
-In Chapa's dashboard set the webhook URL to `https://api.lyubid.com/api/v1/payments/chapa/webhook`, and the
+In Chapa's dashboard set the webhook URL to `https://api.leyubid.com/api/v1/payments/chapa/webhook`, and the
 secret hash to the value of `CHAPA_WEBHOOK_SECRET`. Test with a `CHASECK_TEST-…` key first; switch to the live key
 only after a test payment worked end to end. Do not switch keys while payments are waiting.
 
@@ -90,7 +90,7 @@ The database holds every user's money: back it up. Turn on **Droplet backups** i
 keep a daily copy of the database itself, for example with this line in `crontab -e`:
 
 ```
-0 3 * * * cd /root/lub-backend && docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.production exec -T postgres pg_dump -U lyubid lyubid | gzip > /root/backups/lyubid-$(date +\%F).sql.gz
+0 3 * * * cd /root/lub-backend && docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.production exec -T postgres pg_dump -U leyubid leyubid | gzip > /root/backups/leyubid-$(date +\%F).sql.gz
 ```
 
 (create the folder first with `mkdir -p /root/backups`, and copy the files off the server now and then).

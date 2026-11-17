@@ -9,7 +9,7 @@
 #
 # See deploy/README.md for the whole procedure.
 
-name: lyubid
+name: leyubid
 
 services:
   postgres:
@@ -18,7 +18,7 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in deploy/.env.production}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env.production}
-      POSTGRES_DB: ${POSTGRES_DB:-lyubid}
+      POSTGRES_DB: ${POSTGRES_DB:-leyubid}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -48,7 +48,7 @@ services:
       PORT: '3000'
       # Caddy is the only proxy, and it sets X-Forwarded-For itself.
       TRUST_PROXY: 'true'
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-lyubid}?schema=public&connection_limit=10
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-leyubid}?schema=public&connection_limit=10
       REDIS_URL: redis://redis:6379
     depends_on:
       postgres:
