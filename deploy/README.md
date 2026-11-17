@@ -75,6 +75,35 @@ In Chapa's dashboard set the webhook URL to `https://api.leyubid.com/api/v1/paym
 secret hash to the value of `CHAPA_WEBHOOK_SECRET`. Test with a `CHASECK_TEST-…` key first; switch to the live key
 only after a test payment worked end to end. Do not switch keys while payments are waiting.
 
+## 7. Product pictures (Cloudflare R2)
+
+Pictures uploaded in the admin site are stored in a Cloudflare R2 bucket and served from it. Until this is set up,
+the admin site only offers to add pictures by address.
+
+1. Sign up at [dash.cloudflare.com](https://dash.cloudflare.com) and open **R2 Object Storage**. Activate it (a card is
+   asked for; the free allowance covers about 10 GB).
+2. **Create bucket**: name `leyubid-images`, location _Automatic_.
+3. Give it a public address. Best: move the DNS of `leyubid.com` to Cloudflare, then in the bucket open
+   **Settings → Custom Domains → Connect Domain** and enter `images.leyubid.com`. Quicker, for testing only:
+   **Settings → Public Development URL → Enable**, which gives a `https://pub-….r2.dev` address (rate-limited).
+4. **R2 → Manage API tokens → Create API token**: permission _Object Read & Write_, applied to the
+   `leyubid-images` bucket only. Copy the **Access Key ID** and **Secret Access Key** (shown once) and note the
+   **Account ID** shown on the R2 page.
+5. On the server, fill these in `deploy/.env.production`:
+
+   ```
+   R2_ACCOUNT_ID=<account id>
+   UPLOADS_BUCKET=leyubid-images
+   UPLOADS_ACCESS_KEY_ID=<access key id>
+   UPLOADS_SECRET_ACCESS_KEY=<secret access key>
+   UPLOADS_PUBLIC_URL=https://images.leyubid.com
+   ```
+
+   then apply them: `docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env.production up -d api`.
+
+The admin site's product page then shows **Upload pictures**. JPEG, PNG and WebP up to 5 MB are accepted
+(`UPLOADS_MAX_MB`). Files go straight from the API to R2; nothing is kept on the Droplet.
+
 ## Updating to a new version
 
 ```bash

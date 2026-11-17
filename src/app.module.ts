@@ -28,6 +28,7 @@ import { CurrencyModule } from './modules/currency/currency.module';
 import { HealthModule } from './modules/health/health.module';
 import { PhoneModule } from './modules/phone/phone.module';
 import { ProductsModule } from './modules/products/products.module';
+import { UploadsModule } from './modules/uploads/uploads.module';
 import { WalletModule } from './modules/wallet/wallet.module';
 import { WinnersModule } from './modules/winners/winners.module';
 
@@ -92,6 +93,7 @@ function prettyLogs(config: AppConfig): boolean {
     WalletModule,
     PaymentsModule,
     ProductsModule,
+    UploadsModule,
     AuctionsModule,
     BiddingModule,
     NotificationsModule,

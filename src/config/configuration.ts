@@ -39,6 +39,17 @@ export interface AppConfig {
   };
   /** How often pending SMS/email/push notifications are sent, in seconds. 0 turns the background job off. */
   notifications: { dispatchIntervalSeconds: number };
+  /** Product pictures, stored in Cloudflare R2 (or any S3-compatible storage). Off while any value is empty. */
+  uploads: {
+    /** S3 endpoint, e.g. https://<account id>.r2.cloudflarestorage.com */
+    endpoint: string;
+    bucket: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+    /** Public address of the bucket, without a trailing slash: a file's address is `${publicUrl}/${key}`. */
+    publicUrl: string;
+    maxBytes: number;
+  };
   payments: {
     /** "none" turns deposits off. */
     provider: 'none' | 'chapa';
@@ -125,6 +136,18 @@ export function configuration(): { app: AppConfig } {
         closingReminderMinutes: num('AUCTION_CLOSING_REMINDER_MINUTES', 60),
       },
       notifications: { dispatchIntervalSeconds: num('NOTIFICATION_DISPATCH_INTERVAL_SECONDS', 10) },
+      uploads: {
+        endpoint: (
+          e.UPLOADS_S3_ENDPOINT || (e.R2_ACCOUNT_ID ? `https://${e.R2_ACCOUNT_ID}.r2.cloudflarestorage.com` : '')
+        )
+          .trim()
+          .replace(/\/+$/, ''),
+        bucket: e.UPLOADS_BUCKET ?? '',
+        accessKeyId: e.UPLOADS_ACCESS_KEY_ID ?? '',
+        secretAccessKey: e.UPLOADS_SECRET_ACCESS_KEY ?? '',
+        publicUrl: (e.UPLOADS_PUBLIC_URL ?? '').replace(/\/+$/, ''),
+        maxBytes: num('UPLOADS_MAX_MB', 5) * 1024 * 1024,
+      },
       payments: {
         provider: (e.PAYMENT_PROVIDER ?? 'none') as 'none' | 'chapa',
         depositMinMinor: BigInt(e.DEPOSIT_MIN_MINOR || '1000'),

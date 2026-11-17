@@ -118,6 +118,20 @@ export const envSchema = Joi.object({
     .uri({ scheme: ['http', 'https'] })
     .allow('')
     .when('PAYMENT_PROVIDER', { is: 'chapa', then: Joi.string().min(1).invalid('').required() }),
+  // Product picture uploads (Cloudflare R2 or any S3-compatible storage). All empty: uploads are off.
+  R2_ACCOUNT_ID: Joi.string()
+    .allow('')
+    .pattern(/^[a-f0-9]{32}$/),
+  UPLOADS_S3_ENDPOINT: Joi.string()
+    .uri({ scheme: ['https'] })
+    .allow(''),
+  UPLOADS_BUCKET: Joi.string().allow(''),
+  UPLOADS_ACCESS_KEY_ID: Joi.string().allow(''),
+  UPLOADS_SECRET_ACCESS_KEY: Joi.string().allow(''),
+  UPLOADS_PUBLIC_URL: Joi.string()
+    .uri({ scheme: ['https'] })
+    .allow(''),
+  UPLOADS_MAX_MB: Joi.number().integer().min(1).max(20).default(5),
 }).unknown(true);
 
 export function validateEnv(config: Record<string, unknown>): Record<string, unknown> {
