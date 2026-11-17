@@ -16,7 +16,13 @@ import type { AuthenticatedUser } from '../../common/decorators/current-user.dec
 import { Public } from '../../common/decorators/public.decorator';
 import { ErrorResponseDto } from '../../common/dto/error-response.dto';
 import { PageQueryDto } from '../../common/dto/page-query.dto';
-import { MyWinDto, MyWinPageDto, PublicWinnerPageDto, SubmitDeliveryDetailsDto } from './dto/winner.dto';
+import {
+  MyWinDto,
+  MyWinPageDto,
+  PublicWinnerDetailDto,
+  PublicWinnerPageDto,
+  SubmitDeliveryDetailsDto,
+} from './dto/winner.dto';
 import { WinnersService } from './winners.service';
 
 const error = (description: string) => ({ description, type: ErrorResponseDto });
@@ -51,6 +57,20 @@ export class WinnersController {
   @ApiUnauthorizedResponse(error('UNAUTHORIZED'))
   listMine(@CurrentUser() user: AuthenticatedUser, @Query() query: PageQueryDto): Promise<MyWinPageDto> {
     return this.winners.listMine(user.id, query);
+  }
+
+  @Get(':id')
+  @Public()
+  @ApiOperation({
+    summary: 'Get a recent winner with the full draw',
+    description:
+      'No sign-in needed. A published winner plus how many bids each amount received, so anyone can check ' +
+      'that the winning amount was the lowest one bid exactly once. Never shows who placed the other bids.',
+  })
+  @ApiOkResponse({ type: PublicWinnerDetailDto })
+  @ApiNotFoundResponse(error('NOT_FOUND — no such published winner'))
+  getPublished(@Param('id', ParseUUIDPipe) id: string): Promise<PublicWinnerDetailDto> {
+    return this.winners.getPublished(id);
   }
 
   @Put('mine/:id/delivery-details')

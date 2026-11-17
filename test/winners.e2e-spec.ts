@@ -259,6 +259,40 @@ describe('Winners and prize delivery', () => {
       expect((await t.get('/admin/winners?published=false', admin.token)).body.total).toBe(2);
     });
 
+    it('shows one published winner with the whole draw, and nothing that is not published', async () => {
+      const person = await account(100000n);
+      const { auctionId, winnerId } = await wonAuction(person);
+      await t.get(`/winners/${winnerId}`).expect(404); // pending
+      await act(winnerId, 'verify').expect(200);
+      await t.get(`/winners/${winnerId}`).expect(404); // verified, not published
+      await act(winnerId, 'publish').expect(200);
+
+      const detail = await t.get(`/winners/${winnerId}`).expect(200);
+      expect(detail.body).toMatchObject({
+        id: winnerId,
+        auctionId,
+        amountMinor: '300',
+        amount: '3.00',
+        bidFeeMinor: '7500',
+        bidFee: '75.00',
+        totalBids: 4,
+        distinctAmounts: 3,
+        uniqueAmounts: 2,
+        histogram: [
+          { amountMinor: '100', amount: '1.00', count: 2 },
+          { amountMinor: '300', amount: '3.00', count: 1 },
+          { amountMinor: '500', amount: '5.00', count: 1 },
+        ],
+      });
+      expect(JSON.stringify(detail.body)).not.toContain(person.phoneNumber);
+      expect(JSON.stringify(detail.body)).not.toContain(person.id);
+
+      await act(winnerId, 'unpublish').expect(200);
+      await t.get(`/winners/${winnerId}`).expect(404);
+      await t.get(`/winners/${randomUUID()}`).expect(404);
+      await t.get('/winners/not-a-uuid').expect(400);
+    });
+
     it('cannot publish an unverified winner even directly in the database', async () => {
       const { winnerId } = await wonAuction(await account(100000n));
       await expect(

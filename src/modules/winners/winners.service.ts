@@ -19,6 +19,7 @@ import type {
   DeliveryDto,
   MyWinDto,
   MyWinPageDto,
+  PublicWinnerDetailDto,
   PublicWinnerPageDto,
   SetDeliveryStatusDto,
   SubmitDeliveryDetailsDto,
@@ -160,6 +161,35 @@ export class WinnersService {
       total,
       page,
       limit,
+    };
+  }
+
+  /** One published winner with how many bids each amount got: the whole draw, without who placed the bids. */
+  async getPublished(id: string): Promise<PublicWinnerDetailDto> {
+    const w = await this.prisma.winner.findFirst({
+      where: { id, publishedAt: { not: null }, verificationStatus: WinnerVerificationStatus.VERIFIED },
+      include: {
+        ...winnerInclude,
+        auction: { select: { ...winnerInclude.auction.select, bidFeeMinor: true, result: true } },
+      },
+    });
+    const result = w?.auction.result;
+    if (!w || !result) throw notFound();
+    const minorUnits = w.currencyRef.minorUnits;
+    return {
+      ...base(w),
+      winnerLabel: maskPhone(w.user.phoneNumber),
+      publishedAt: w.publishedAt as Date,
+      bidFeeMinor: w.auction.bidFeeMinor.toString(),
+      bidFee: formatMinor(w.auction.bidFeeMinor, minorUnits),
+      totalBids: result.totalBids,
+      distinctAmounts: result.distinctAmounts,
+      uniqueAmounts: result.uniqueAmounts,
+      histogram: (result.histogram as unknown as { amountMinor: string; count: number }[]).map((entry) => ({
+        amountMinor: entry.amountMinor,
+        amount: formatMinor(BigInt(entry.amountMinor), minorUnits),
+        count: entry.count,
+      })),
     };
   }
 

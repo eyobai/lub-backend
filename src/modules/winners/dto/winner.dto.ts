@@ -12,6 +12,7 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
+import { ResultHistogramEntryDto } from '../../results/dto/result.dto';
 import { PageQueryDto } from '../../../common/dto/page-query.dto';
 import { Trim } from '../../../common/utils/trim.transform';
 import { IsUndefinable } from '../../../common/validators/validators';
@@ -211,6 +212,29 @@ export class PublicWinnerDto extends WinnerBaseDto {
 
   @ApiProperty()
   publishedAt!: Date;
+}
+
+export class PublicWinnerDetailDto extends PublicWinnerDto {
+  @ApiProperty({ example: '2500', description: `The auction's bid fee. ${MINOR}` })
+  bidFeeMinor!: string;
+
+  @ApiProperty({ example: '25.00', description: DECIMAL })
+  bidFee!: string;
+
+  @ApiProperty({ example: 1191 })
+  totalBids!: number;
+
+  @ApiProperty({ example: 150, description: 'Number of different amounts that were bid' })
+  distinctAmounts!: number;
+
+  @ApiProperty({ example: 60, description: 'Number of amounts that were bid exactly once' })
+  uniqueAmounts!: number;
+
+  @ApiProperty({
+    type: [ResultHistogramEntryDto],
+    description: 'How many bids each amount received, lowest amount first. Never who bid them.',
+  })
+  histogram!: ResultHistogramEntryDto[];
 }
 
 export class PublicWinnerPageDto {
