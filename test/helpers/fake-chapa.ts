@@ -21,6 +21,8 @@ export class FakeChapa {
   down = false;
   /** Refuse to open new payments, with this message. */
   refuseInitialize: string | null = null;
+  /** Transactions Chapa refuses to look up because they were opened with a key of the other mode. */
+  readonly otherMode = new Set<string>();
   /** How a direct charge asks the payer to approve, as Chapa reports it. */
   chargeAuthType = 'ussd';
   initializeCalls = 0;
@@ -53,6 +55,7 @@ export class FakeChapa {
     this.down = false;
     this.refuseInitialize = null;
     this.chargeAuthType = 'ussd';
+    this.otherMode.clear();
     this.initializeCalls = 0;
     this.chargeCalls = 0;
     this.chargeType = null;
@@ -154,6 +157,12 @@ export class FakeChapa {
     const verify = /^\/v1\/transaction\/verify\/([^/]+)$/.exec(path);
     if (req.method === 'GET' && verify) {
       this.verifyCalls += 1;
+      if (this.otherMode.has(decodeURIComponent(verify[1]))) {
+        return {
+          status: 401,
+          body: { message: 'Secret key mode mismatch with transaction mode', status: 'failed', data: null },
+        };
+      }
       const tx = this.transactions.get(decodeURIComponent(verify[1]));
       if (!tx) {
         return {

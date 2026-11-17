@@ -38,6 +38,11 @@ export class ChapaError extends Error {
     message: string,
     readonly refused: boolean,
     readonly httpStatus?: number,
+    /**
+     * The transaction was opened with a key of the other mode (test or live) than the one in use now. Asking again
+     * with this key can never work: it is a fact about this one transaction, not an outage.
+     */
+    readonly modeMismatch = false,
   ) {
     super(message);
   }
@@ -101,6 +106,9 @@ export class ChapaClient {
     const { status, body } = await this.request('GET', `/v1/transaction/verify/${encodeURIComponent(txRef)}`);
     if (status >= 200 && status < 300 && body.data && typeof body.data === 'object') {
       return body.data;
+    }
+    if ((status === 401 || status === 403) && /mode mismatch/i.test(describe(body.message))) {
+      throw new ChapaError(`Chapa could not verify the transaction: ${describe(body.message)}`, true, status, true);
     }
     if (status === 401 || status === 403 || status >= 500) {
       throw new ChapaError(`Chapa could not verify the transaction: ${describe(body.message)}`, false, status);

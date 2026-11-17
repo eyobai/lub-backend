@@ -573,7 +573,13 @@ export class PaymentsService {
     if (!options.force && sinceLast < MIN_RECHECK_MS) return payment;
 
     const currency = await this.currencies.resolve(payment.currency, true);
-    const answer = await this.chapa.verify(payment.merchantReference);
+    let answer: ChapaVerification | null;
+    try {
+      answer = await this.chapa.verify(payment.merchantReference);
+    } catch (error) {
+      if (error instanceof ChapaError && error.modeMismatch) return this.closeOtherMode(payment, error.message);
+      throw error;
+    }
     const outcome = judgeVerification(answer, {
       txRef: payment.merchantReference,
       amountMinor: payment.amountMinor,
@@ -771,6 +777,32 @@ export class PaymentsService {
       });
     }
     return tx.paymentTransaction.update({ where: { id }, data: { lastCheckedAt: now } });
+  }
+
+  /**
+   * The payment was opened with a Chapa key of the other mode (test or live) than the one in use now, so this key can
+   * never confirm it. It is closed (it would otherwise hold up every other check) and flagged for finance staff: if it
+   * was a real payment, they switch the key back and ask Chapa again, which credits the wallet as usual.
+   */
+  private async closeOtherMode(payment: PaymentTransaction, reason: string): Promise<PaymentTransaction> {
+    this.logger.warn({ paymentId: payment.id }, 'Deposit opened with the other Chapa key mode: closed for review');
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM payment_transactions WHERE id = ${payment.id}::uuid FOR UPDATE`;
+      const current = await tx.paymentTransaction.findUniqueOrThrow({ where: { id: payment.id } });
+      if (current.status === PaymentStatus.SUCCEEDED) return current;
+      const open = OPEN.includes(current.status);
+      return tx.paymentTransaction.update({
+        where: { id: payment.id },
+        data: {
+          status: open ? PaymentStatus.FAILED : current.status,
+          failureReason: open ? 'Opened with a Chapa key of the other mode (test or live)' : current.failureReason,
+          reviewReason:
+            current.reviewReason ??
+            `${reason}. Opened with the other Chapa key mode: check it in Chapa's dashboard, or switch the key back and ask Chapa again.`,
+          lastCheckedAt: new Date(),
+        },
+      });
+    });
   }
 
   /** A refund or reversal reported by Chapa. Nothing is taken from the wallet: finance staff decide what to do. */

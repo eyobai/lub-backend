@@ -115,6 +115,34 @@ describe('Deposits through Chapa', () => {
     expect(report.ok).toBe(true);
   }
 
+  describe('a payment opened with the other Chapa key mode', () => {
+    it('is closed for review, and does not stop the check of the other payments', async () => {
+      const user = await account();
+      const stuck = await opened(user, '20000');
+      const paid = await opened(user, '50000');
+      chapa.otherMode.add(stuck.reference);
+      chapa.pay(paid.reference);
+
+      await payments.sweep();
+
+      const flagged = await t.prisma.paymentTransaction.findUniqueOrThrow({ where: { id: stuck.id } });
+      expect(flagged.status).toBe(PaymentStatus.FAILED);
+      expect(flagged.reviewReason).toMatch(/other Chapa key mode/);
+      expect((await read(user, paid.id)).status).toBe(PaymentStatus.SUCCEEDED);
+      expect(await balance(user)).toBe('50000');
+
+      // After the key is switched back, staff ask again and a real payment is credited as usual.
+      chapa.otherMode.clear();
+      chapa.pay(stuck.reference);
+      await payments.sweep();
+      await t.prisma.paymentTransaction.updateMany({ data: { lastCheckedAt: null } });
+      const admin = await account(RoleName.FINANCE);
+      await t.post(`/admin/deposits/${stuck.id}/recheck`, {}, admin.token).expect(200);
+      expect(await balance(user)).toBe('70000');
+      await expectBooksToBalance();
+    });
+  });
+
   describe('GET /wallet/deposit-options', () => {
     it('requires authentication', async () => {
       await t.get('/wallet/deposit-options').expect(401);
