@@ -6,7 +6,10 @@ COPY prisma ./prisma
 RUN npx prisma generate
 COPY tsconfig*.json nest-cli.json ./
 COPY src ./src
-RUN npm run build && npm prune --omit=dev
+# Node sizes its heap from the machine's memory; on a small server (512 MB) that is too little for the
+# TypeScript build. Let it grow into swap. Only the build uses this, not the running API.
+ARG BUILD_MEMORY_MB=1536
+RUN NODE_OPTIONS=--max-old-space-size=$BUILD_MEMORY_MB npm run build && npm prune --omit=dev
 
 FROM node:22-alpine
 ENV NODE_ENV=production
