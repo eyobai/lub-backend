@@ -281,11 +281,15 @@ export class PaymentsService {
           data: { status: PaymentStatus.FAILED, failureReason: reason },
         });
         this.logger.warn({ paymentId: payment.id, reason }, 'Chapa did not send a direct charge');
+        // Chapa refusing this kind of payment for the account is not the payer's number being wrong.
+        const unavailable = /not allowed for direct charge/i.test(reason);
         throw new AppException(
           HttpStatus.BAD_GATEWAY,
           ErrorCode.PAYMENT_PROVIDER_ERROR,
-          'The payment request could not be sent to that phone. No money was taken.',
-          { directCharge: true },
+          unavailable
+            ? 'Paying from a mobile wallet on this site is not available right now. No money was taken.'
+            : 'The payment request could not be sent to that phone. No money was taken.',
+          unavailable ? { directCharge: true, unavailable: true } : { directCharge: true },
         );
       }
       await this.prisma.paymentTransaction.update({

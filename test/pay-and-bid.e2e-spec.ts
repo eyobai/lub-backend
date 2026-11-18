@@ -279,6 +279,18 @@ describe('Pay and bid through Chapa', () => {
       expect(shown.body).toMatchObject({ status: 'FAILED', requestNotSent: true });
     });
 
+    it('tells apart Chapa not allowing direct charges at all from a refused number', async () => {
+      const auctionId = await liveAuction();
+      const user = await account();
+      chapa.refuseInitialize = 'You are not allowed for direct charges, please contact us!';
+      const res = await charge(user, auctionId, { method: 'telebirr' });
+      expect(res.status).toBe(502);
+      expect(res.body).toMatchObject({
+        error: 'PAYMENT_PROVIDER_ERROR',
+        details: { directCharge: true, unavailable: true },
+      });
+    });
+
     it('gives up on a wallet that wants a one-time code typed in', async () => {
       const auctionId = await liveAuction();
       const user = await account();
