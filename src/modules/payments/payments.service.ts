@@ -905,6 +905,7 @@ export class PaymentsService {
       bonusMinor: payment.bonusMinor.toString(),
       bonus: formatMinor(payment.bonusMinor, minorUnits),
       failureReason: publicFailureReason(payment.status),
+      requestNotSent: payment.status === PaymentStatus.FAILED && !!payment.failureReason?.startsWith(NOT_SENT),
       walletTransactionId: payment.walletTransactionId,
       confirmedAt: payment.verifiedAt,
       expiresAt: new Date(payment.createdAt.getTime() + this.config.payments.depositExpiryMinutes * 60_000),
@@ -937,6 +938,9 @@ export class PaymentsService {
 }
 
 /** What the payer is told. The provider's own wording stays in the back office. */
+/** How a direct charge Chapa refused to send is recorded (see ChapaClient.directCharge). */
+const NOT_SENT = 'Chapa did not send the payment request';
+
 function publicFailureReason(status: PaymentStatus): string | null {
   if (status === PaymentStatus.EXPIRED) return 'The payment was not completed in time. No money was added.';
   if (status === PaymentStatus.FAILED || status === PaymentStatus.CANCELLED) {

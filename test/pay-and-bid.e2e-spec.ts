@@ -274,6 +274,9 @@ describe('Pay and bid through Chapa', () => {
       const payment = await t.prisma.paymentTransaction.findFirstOrThrow({ where: { userId: user.id } });
       expect(payment.status).toBe(PaymentStatus.FAILED);
       expect(payment.failureReason).toContain('Invalid mobile number');
+      // The site can tell the payer the request never reached the phone, rather than that they declined it.
+      const shown = await t.get(`/wallet/deposits/${payment.id}`, user.token).expect(200);
+      expect(shown.body).toMatchObject({ status: 'FAILED', requestNotSent: true });
     });
 
     it('gives up on a wallet that wants a one-time code typed in', async () => {

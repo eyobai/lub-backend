@@ -211,6 +211,13 @@ export class DepositDto {
   failureReason!: string | null;
 
   @ApiProperty({
+    description:
+      'True when the provider refused to send the payment request at all, so nothing ever reached the phone ' +
+      '(for example direct charges are not enabled for this account). False for a declined or cancelled payment.',
+  })
+  requestNotSent!: boolean;
+
+  @ApiProperty({
     type: String,
     format: 'uuid',
     nullable: true,
