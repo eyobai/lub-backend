@@ -23,6 +23,7 @@ import { WinnersService } from '../modules/winners/winners.service';
  *   DEMO_ADMIN_PHONE   an ADMIN or SUPER_ADMIN account that creates the auction and verifies the win (required)
  *   DEMO_BIDDERS       number of sample bidders, one bid each (default 6000)
  *   DEMO_WIN_AMOUNT    winning bid in ETB (default 9.30)
+ *   DEMO_MIN_BID       smallest bid the auction accepts, in ETB (default 1)
  *   DEMO_BID_FEE       bid fee in ETB (default 80)
  *   DEMO_MARKET_VALUE  product value in ETB (default 230000)
  *   DEMO_IMAGE_URL     product picture address (optional; can be added later in the admin site)
@@ -90,7 +91,8 @@ function random(seed: number): () => number {
  * One amount per bidder, in minor units, such that `win` is the lowest amount bid exactly once. People favour small
  * and round amounts, so those get more bids; every amount below `win` ends up with two or more.
  */
-export function demoAmounts(bidders: number, win: number, max: number, rnd: () => number): number[] {
+export function demoAmounts(bidders: number, win: number, min: number, max: number, rnd: () => number): number[] {
+  if (win < min || win > max) throw new Error('The winning amount must be between the smallest and largest bid');
   if (bidders < 3) throw new Error('Need at least 3 bidders');
   const counts = new Map<number, number>();
   const add = (amount: number, n = 1) => counts.set(amount, (counts.get(amount) ?? 0) + n);
@@ -103,9 +105,9 @@ export function demoAmounts(bidders: number, win: number, max: number, rnd: () =
   };
   add(win);
   let left = bidders - 1;
-  let below = win > 1 ? Math.min(left, Math.round(bidders * 0.62)) : 0;
+  let below = win > min ? Math.min(left, Math.round(bidders * 0.62)) : 0;
   while (below > 0) {
-    const amount = pick(1, win - 1);
+    const amount = pick(min, win - 1);
     const n = Math.min(below, (counts.get(amount) ?? 0) === 0 ? 2 : 1); // a new amount below the winner starts at two
     add(amount, n);
     below -= n;
@@ -174,7 +176,8 @@ async function main(): Promise<void> {
   const feeMinor = etbToMinor(process.env.DEMO_BID_FEE ?? '80');
   const valueMinor = etbToMinor(process.env.DEMO_MARKET_VALUE ?? '230000');
   const imageUrl = process.env.DEMO_IMAGE_URL?.trim();
-  const maxBidMinor = 10000n; // 100 ETB
+  let minBidMinor = etbToMinor(process.env.DEMO_MIN_BID ?? '1');
+  let maxBidMinor = 10000n; // 100 ETB
   const resumeId = process.env.DEMO_AUCTION_ID?.trim();
   const concurrency = Math.max(1, Math.min(8, Number(process.env.DEMO_CONCURRENCY ?? 2)));
   if (!Number.isInteger(bidders) || bidders < 3 || bidders > 20000) throw new Error('DEMO_BIDDERS must be 3–20000');
@@ -201,6 +204,9 @@ async function main(): Promise<void> {
         throw new Error(`Auction ${resumeId} is ${existing.status}; only an open one can be continued`);
       auctionId = existing.id;
       feeToFund = existing.bidFeeMinor;
+      // The plan must be the one the stopped run used: the auction's own limits.
+      minBidMinor = existing.minBidMinor;
+      maxBidMinor = existing.maxBidMinor;
       console.log(`1/6 Continuing auction ${auctionId} "${existing.title}"`);
     } else {
       console.log(`1/6 Creating the product and auction "${TITLE}"`);
@@ -225,7 +231,7 @@ async function main(): Promise<void> {
           title: TITLE,
           description: DESCRIPTION,
           bidFeeMinor: feeMinor.toString(),
-          minBidMinor: '1',
+          minBidMinor: minBidMinor.toString(),
           maxBidMinor: maxBidMinor.toString(),
           bidStepMinor: '1',
           maxBidsPerUser: null,
@@ -279,7 +285,7 @@ async function main(): Promise<void> {
     );
 
     console.log('4/6 Placing one bid per bidder');
-    const amounts = demoAmounts(users.length, Number(winMinor), Number(maxBidMinor), random(930));
+    const amounts = demoAmounts(users.length, Number(winMinor), Number(minBidMinor), Number(maxBidMinor), random(930));
     const bidding = app.get(BiddingService);
     // A continued run: bids already placed must be the ones this plan gives, or the winner would not be as asked.
     const placed = new Map(
