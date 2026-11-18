@@ -219,6 +219,8 @@ export class PaymentsService {
       );
     }
 
+    // The top-up bonus is promised now, at today's terms; only a first top-up earns it when so configured.
+    const bonusMinor = bid || !(await this.wallets.topUpBonusAvailable(user.id)) ? 0n : this.bonusFor(amountMinor);
     let payment: PaymentTransaction;
     try {
       payment = await this.prisma.paymentTransaction.create({
@@ -233,7 +235,7 @@ export class PaymentsService {
           idempotencyKey,
           chargeMethod: charge?.method,
           // Promised now, at today's terms; given once the payment is confirmed. Bid payments earn none.
-          bonusMinor: bid ? 0n : this.bonusFor(amountMinor),
+          bonusMinor,
           bidAuctionId: bid?.auctionId,
           bidAmountsMinor: bid?.amountsMinor ?? [],
         },
@@ -724,12 +726,27 @@ export class PaymentsService {
           },
           tx,
         );
-        if (payment.bonusMinor > 0n) {
+        // Two first top-ups paid at once: only the one confirmed first keeps its bonus.
+        let bonusMinor = payment.bonusMinor;
+        if (bonusMinor > 0n && this.config.payments.bonus.firstOnly) {
+          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`first-topup:${payment.userId}`}, 0))::text`;
+          const earlier = await tx.paymentTransaction.count({
+            where: {
+              userId: payment.userId,
+              direction: PaymentDirection.DEPOSIT,
+              status: PaymentStatus.SUCCEEDED,
+              bidAuctionId: null,
+              id: { not: id },
+            },
+          });
+          if (earlier > 0) bonusMinor = 0n;
+        }
+        if (bonusMinor > 0n) {
           await this.wallets.grantBonus(
             {
               userId: payment.userId,
               currency: payment.currency,
-              amountMinor: payment.bonusMinor,
+              amountMinor: bonusMinor,
               expiresAt: new Date(now.getTime() + this.config.payments.bonus.validDays * 86_400_000),
               paymentTransactionId: payment.id,
               idempotencyKey: `bonus:payment:${payment.merchantReference}`,
@@ -747,6 +764,7 @@ export class PaymentsService {
             lastCheckedAt: now,
             failureReason: null,
             providerPayload: payload,
+            bonusMinor,
           },
         });
         await this.audit.record(tx, {

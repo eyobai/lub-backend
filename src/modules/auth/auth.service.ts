@@ -1,3 +1,4 @@
+import { WalletService } from '../wallet/wallet.service';
 import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { OtpPurpose, Prisma, RoleName, SecurityEventType } from '@prisma/client';
 import { createHmac, timingSafeEqual } from 'node:crypto';
@@ -46,7 +47,19 @@ export class AuthService {
     private readonly loginAttempts: LoginAttemptService,
     private readonly securityEvents: SecurityEventService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
+    private readonly wallets: WalletService,
   ) {}
+
+  /** The welcome bonus, once the account is usable. A failure never stops the registration; it is logged. */
+  private async welcome(userId: string): Promise<{ welcomeBonusMinor?: string }> {
+    try {
+      const given = await this.wallets.grantWelcomeBonus(userId);
+      return given ? { welcomeBonusMinor: given.toString() } : {};
+    } catch (error) {
+      this.logger.error({ err: error, userId }, 'The welcome bonus could not be given');
+      return {};
+    }
+  }
 
   async register(dto: RegisterDto, client: ClientInfo): Promise<RegisterResponseDto> {
     const phoneNumber = this.phones.normalize(dto.phoneNumber);
@@ -130,7 +143,15 @@ export class AuthService {
         const tokens = await this.tokens.issueSession({ id: user.id, roles: this.roleNames(user) }, client, tx);
         return { user, tokens };
       });
-      return { userId: user.id, phoneNumber, verificationRequired: false, user: this.toAuthUser(user), tokens };
+      const bonus = await this.welcome(user.id);
+      return {
+        userId: user.id,
+        phoneNumber,
+        verificationRequired: false,
+        user: this.toAuthUser(user),
+        tokens,
+        ...bonus,
+      };
     } catch (err) {
       throw this.mapDuplicate(err);
     }
@@ -198,7 +219,7 @@ export class AuthService {
         await tx.user.update({ where: { id: user.id }, data: { phoneVerifiedAt: now, lastLoginAt: now } });
         return this.tokens.issueSession({ id: user.id, roles: this.roleNames(user) }, client, tx);
       });
-      return { user: this.toAuthUser({ ...user, phoneVerifiedAt: now }), tokens };
+      return { user: this.toAuthUser({ ...user, phoneVerifiedAt: now }), tokens, ...(await this.welcome(user.id)) };
     } catch (err) {
       if (err instanceof AppException && err.code === ErrorCode.OTP_INVALID) {
         await this.securityEvents.record(SecurityEventType.OTP_VERIFICATION_FAILED, {

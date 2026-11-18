@@ -112,6 +112,13 @@ export const envSchema = Joi.object({
     .pattern(/^[0-9]{1,15}$/)
     .default('1000000'),
   TOPUP_BONUS_VALID_DAYS: Joi.number().integer().min(1).max(365).default(7),
+  // true: only a user's first successful wallet top-up earns the bonus.
+  TOPUP_BONUS_FIRST_ONLY: Joi.boolean().default(true),
+  // Welcome bonus for a new account, in minor units (1000 = ETB 10). "0" turns it off.
+  WELCOME_BONUS_MINOR: Joi.string()
+    .pattern(/^\d{1,12}$/)
+    .default('1000'),
+  WELCOME_BONUS_VALID_DAYS: Joi.number().integer().min(1).max(365).default(30),
   DEPOSIT_EXPIRY_MINUTES: Joi.number().integer().min(5).max(10080).default(120),
   PAYMENT_SWEEP_INTERVAL_SECONDS: Joi.number().integer().min(0).max(3600).default(60),
   PUBLIC_API_URL: Joi.string()

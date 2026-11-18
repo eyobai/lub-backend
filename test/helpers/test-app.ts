@@ -57,6 +57,8 @@ export async function createTestApp(
   notificationProviders: NotificationProvider[] = [],
 ): Promise<TestApp> {
   const previous: Record<string, string | undefined> = {};
+  // Off unless a suite is about them, so balances in other suites stay what they set up.
+  envOverrides = { WELCOME_BONUS_MINOR: '0', TOPUP_BONUS_FIRST_ONLY: 'false', ...envOverrides };
   for (const [key, value] of Object.entries(envOverrides)) {
     previous[key] = process.env[key];
     process.env[key] = value;

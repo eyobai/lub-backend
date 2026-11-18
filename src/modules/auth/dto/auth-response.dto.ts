@@ -77,6 +77,12 @@ export class AuthResponseDto {
 
   @ApiProperty({ type: TokenPairDto })
   tokens!: TokenPairDto;
+
+  @ApiPropertyOptional({
+    example: '1000',
+    description: 'Present when this sign-up gave the welcome bonus: the amount in minor units (1000 = ETB 10).',
+  })
+  welcomeBonusMinor?: string;
 }
 
 export class RegisterResponseDto {
@@ -108,4 +114,10 @@ export class RegisterResponseDto {
 
   @ApiPropertyOptional({ type: OtpInfoDto, description: 'Present when verificationRequired is true' })
   otp?: OtpInfoDto;
+
+  @ApiPropertyOptional({
+    example: '1000',
+    description: 'Present when this sign-up gave the welcome bonus: the amount in minor units (1000 = ETB 10).',
+  })
+  welcomeBonusMinor?: string;
 }

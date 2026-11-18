@@ -56,7 +56,9 @@ export interface AppConfig {
     /** Smallest and largest single deposit, in minor units of the default currency. */
     depositMinMinor: bigint;
     /** Top-up bonus: this percent of a wallet top-up, at most `maxMinor`, spendable for `validDays`. 0 turns it off. */
-    bonus: { percent: number; maxMinor: bigint; validDays: number };
+    bonus: { percent: number; maxMinor: bigint; validDays: number; firstOnly: boolean };
+    /** A bonus every new account gets once, spendable on bid fees for `validDays`. 0 turns it off. */
+    welcome: { amountMinor: bigint; validDays: number };
     depositMaxMinor: bigint;
     /** A deposit the provider never confirms is given up on after this long. */
     depositExpiryMinutes: number;
@@ -160,6 +162,11 @@ export function configuration(): { app: AppConfig } {
           percent: num('TOPUP_BONUS_PERCENT', 100),
           maxMinor: BigInt(e.TOPUP_BONUS_MAX_MINOR || '1000000'),
           validDays: num('TOPUP_BONUS_VALID_DAYS', 7),
+          firstOnly: bool('TOPUP_BONUS_FIRST_ONLY', true),
+        },
+        welcome: {
+          amountMinor: BigInt(e.WELCOME_BONUS_MINOR || '1000'),
+          validDays: num('WELCOME_BONUS_VALID_DAYS', 30),
         },
         depositMaxMinor: BigInt(e.DEPOSIT_MAX_MINOR || '5000000'),
         depositExpiryMinutes: num('DEPOSIT_EXPIRY_MINUTES', 120),

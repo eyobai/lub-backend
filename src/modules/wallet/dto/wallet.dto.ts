@@ -119,6 +119,9 @@ export class WalletDto {
   @ApiProperty({ description: 'A frozen wallet can receive money but cannot spend or withdraw it' })
   isFrozen!: boolean;
 
+  @ApiProperty({ description: 'Whether the next wallet top-up earns the top-up bonus (only the first one does).' })
+  topUpBonusAvailable!: boolean;
+
   @ApiProperty()
   updatedAt!: Date;
 }

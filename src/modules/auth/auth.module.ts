@@ -1,3 +1,4 @@
+import { WalletModule } from '../wallet/wallet.module';
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
@@ -11,7 +12,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { TokenService } from './token.service';
 
 @Module({
-  imports: [PassportModule, JwtModule.register({}), OtpModule],
+  imports: [PassportModule, JwtModule.register({}), OtpModule, WalletModule],
   controllers: [AuthController],
   providers: [AuthService, TokenService, PasswordService, LoginAttemptService, SecurityEventService, JwtStrategy],
   exports: [TokenService, PasswordService, SecurityEventService, LoginAttemptService],

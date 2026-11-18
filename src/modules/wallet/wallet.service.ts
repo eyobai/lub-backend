@@ -1,4 +1,6 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { APP_CONFIG } from '../../config/configuration';
+import type { AppConfig } from '../../config/configuration';
 import { ActorType, EntryDirection, LedgerAccountType, WalletTransactionType } from '@prisma/client';
 import type { Currency, LedgerAccount, Prisma, Wallet } from '@prisma/client';
 import { createHash } from 'node:crypto';
@@ -38,9 +40,11 @@ export interface BonusGrant {
   currency: string;
   amountMinor: bigint;
   expiresAt: Date;
-  paymentTransactionId: string;
+  /** The top-up that earned it; none for a welcome bonus. */
+  paymentTransactionId?: string;
   /** Globally unique, e.g. "bonus:payment:<reference>". */
   idempotencyKey: string;
+  description?: string;
 }
 
 /** What a wallet can spend on bid fees right now. */
@@ -85,9 +89,40 @@ export class WalletService {
     private readonly audit: AuditService,
     private readonly currencies: CurrencyService,
     private readonly notifications: NotificationsService,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
   // ── Queries ────────────────────────────────────────────────────────────────
+
+  /**
+   * The welcome bonus of a new account, given once (the key makes a second call a no-op). Returns what was given,
+   * or null when the welcome bonus is off or was given before.
+   */
+  async grantWelcomeBonus(userId: string): Promise<bigint | null> {
+    const { amountMinor, validDays } = this.config.payments.welcome;
+    if (amountMinor <= 0n) return null;
+    const currency = await this.resolveCurrency();
+    const result = await this.grantBonus({
+      userId,
+      currency: currency.code,
+      amountMinor,
+      expiresAt: new Date(Date.now() + validDays * 86_400_000),
+      idempotencyKey: `bonus:welcome:${userId}`,
+      description: 'Welcome bonus',
+    });
+    return result.replayed ? null : amountMinor;
+  }
+
+  /** Whether the user's next wallet top-up earns the top-up bonus. */
+  async topUpBonusAvailable(userId: string, tx: Tx = this.prisma): Promise<boolean> {
+    const { percent, firstOnly } = this.config.payments.bonus;
+    if (percent <= 0) return false;
+    if (!firstOnly) return true;
+    const earlier = await tx.paymentTransaction.count({
+      where: { userId, direction: 'DEPOSIT', status: 'SUCCEEDED', bidAuctionId: null },
+    });
+    return earlier === 0;
+  }
 
   async getWallet(userId: string, currencyCode?: string): Promise<WalletDto> {
     const currency = await this.resolveCurrency(currencyCode);
@@ -311,8 +346,8 @@ export class WalletService {
             { accountId: promotions.id, direction: DEBIT, amountMinor: grant.amountMinor },
             { accountId: bonus.id, direction: CREDIT, amountMinor: grant.amountMinor },
           ],
-          description: 'Top-up bonus',
-          metadata: { paymentId: grant.paymentTransactionId, expiresAt: grant.expiresAt.toISOString() },
+          description: grant.description ?? 'Top-up bonus',
+          metadata: { paymentId: grant.paymentTransactionId ?? null, expiresAt: grant.expiresAt.toISOString() },
           idempotencyKey: grant.idempotencyKey,
         },
         t,
@@ -691,6 +726,7 @@ export class WalletService {
       spendableMinor: spendableMinor.toString(),
       spendable: formatMinor(spendableMinor, currency.minorUnits),
       isFrozen: wallet.isFrozen,
+      topUpBonusAvailable: await this.topUpBonusAvailable(wallet.userId, tx),
       updatedAt: available.updatedAt > wallet.updatedAt ? available.updatedAt : wallet.updatedAt,
     };
   }
