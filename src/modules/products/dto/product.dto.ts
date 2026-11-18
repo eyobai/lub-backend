@@ -17,10 +17,8 @@ import type { ValidationOptions } from 'class-validator';
 import { CurrencyCode } from '../../../common/dto/currency-code.decorator';
 import { PageQueryDto } from '../../../common/dto/page-query.dto';
 import { Trim } from '../../../common/utils/trim.transform';
-import { IsMinorAmount, IsUndefinable } from '../../../common/validators/validators';
+import { IsUndefinable } from '../../../common/validators/validators';
 
-const MINOR = 'Integer amount in minor units (santim for ETB), as a string so large values keep full precision.';
-const DECIMAL = 'The same amount formatted in major units for display. Do not use it for arithmetic.';
 const MAX_IMAGES = 10;
 const MAX_SPEC_ENTRIES = 50;
 
@@ -96,10 +94,6 @@ export class CreateProductDto {
   @MaxLength(100)
   model?: string | null;
 
-  @ApiProperty({ example: '6500000', description: `Market value. ${MINOR}` })
-  @IsMinorAmount({ allowZero: true })
-  marketValueMinor!: string;
-
   @CurrencyCode()
   currency?: string;
 
@@ -162,11 +156,6 @@ export class UpdateProductDto {
   @IsString()
   @MaxLength(100)
   model?: string | null;
-
-  @ApiPropertyOptional({ example: '6500000', description: `Market value. ${MINOR}` })
-  @IsUndefinable()
-  @IsMinorAmount({ allowZero: true })
-  marketValueMinor?: string;
 
   @ApiPropertyOptional({ type: 'object', additionalProperties: true, nullable: true })
   @IsOptional()
@@ -241,12 +230,6 @@ export class ProductSummaryDto {
 
   @ApiProperty({ example: 'ETB' })
   currency!: string;
-
-  @ApiProperty({ example: '6500000', description: MINOR })
-  marketValueMinor!: string;
-
-  @ApiProperty({ example: '65000.00', description: DECIMAL })
-  marketValue!: string;
 
   @ApiProperty({ type: 'object', additionalProperties: true, nullable: true })
   specifications!: Record<string, SpecificationValue> | null;

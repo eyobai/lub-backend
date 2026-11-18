@@ -99,7 +99,7 @@ await pool(users, 8, async (user) => {
 
 const product = await ok('POST', '/admin/products', {
   token: admin,
-  body: { name: `Load test prize ${RUN_ID}`, marketValueMinor: '5000000' },
+  body: { name: `Load test prize ${RUN_ID}` },
 });
 const closesAt = new Date(Date.now() + DURATION * 1000);
 const auction = await ok('POST', '/admin/auctions', {

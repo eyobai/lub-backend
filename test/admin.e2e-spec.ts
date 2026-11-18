@@ -566,9 +566,7 @@ describe('Admin management', () => {
       await act(user, 'suspend', admin).expect(200);
       await act(user, 'reactivate', superAdmin).expect(200);
       await setRoles(user, ['SUPPORT']).expect(200);
-      const product = await t
-        .post('/admin/products', { name: 'Galaxy A55', marketValueMinor: '6500000' }, admin.token)
-        .expect(201);
+      const product = await t.post('/admin/products', { name: 'Galaxy A55' }, admin.token).expect(201);
 
       const actions = async (query: string) =>
         (await t.get(`/admin/audit-logs?${query}`, admin.token).expect(200)).body.items.map(
@@ -808,9 +806,7 @@ describe('Admin management', () => {
   });
 
   async function draftAuction(): Promise<string> {
-    const product = await t
-      .post('/admin/products', { name: 'Galaxy A55', marketValueMinor: '6500000' }, admin.token)
-      .expect(201);
+    const product = await t.post('/admin/products', { name: 'Galaxy A55' }, admin.token).expect(201);
     const body = {
       productId: product.body.id,
       title: 'Win a phone',

@@ -46,7 +46,6 @@ describe('Products and auctions', () => {
     description: 'Brand new, sealed',
     brand: 'Samsung',
     model: 'SM-A556E',
-    marketValueMinor: '6500000',
     specifications: { Storage: '256 GB', 'Screen size (in)': 6.6, '5G': true },
     images: [
       { url: 'https://cdn.example.com/a55-front.jpg', altText: 'Front' },
@@ -96,8 +95,6 @@ describe('Products and auctions', () => {
         brand: 'Samsung',
         model: 'SM-A556E',
         currency: 'ETB',
-        marketValueMinor: '6500000',
-        marketValue: '65000.00',
         specifications: { Storage: '256 GB', 'Screen size (in)': 6.6, '5G': true },
         status: 'AVAILABLE',
         createdById: admin.id,
@@ -119,9 +116,7 @@ describe('Products and auctions', () => {
 
     it.each([
       ['a missing name', { name: undefined }],
-      ['a decimal market value', { marketValueMinor: '650.50' }],
-      ['a numeric market value', { marketValueMinor: 6500000 }],
-      ['a negative market value', { marketValueMinor: '-1' }],
+      ['a market value, which products no longer have', { marketValueMinor: '6500000' }],
       ['an image that is not a URL', { images: [{ url: 'javascript:alert(1)' }] }],
       [
         'too many images',
@@ -151,7 +146,6 @@ describe('Products and auctions', () => {
           {
             name: 'Galaxy A55 5G',
             brand: null,
-            marketValueMinor: '7000000',
             images: [{ url: 'https://cdn.example.com/new.jpg' }],
           },
           admin.token,
@@ -162,12 +156,11 @@ describe('Products and auctions', () => {
         name: 'Galaxy A55 5G',
         brand: null,
         model: 'SM-A556E',
-        marketValue: '70000.00',
       });
       expect(res.body.images.map((i: { url: string }) => i.url)).toEqual(['https://cdn.example.com/new.jpg']);
       const audit = await t.prisma.auditLog.findFirstOrThrow({ where: { action: 'product.update' } });
-      expect(audit.before).toMatchObject({ name: 'Samsung Galaxy A55', brand: 'Samsung', marketValueMinor: '6500000' });
-      expect(audit.after).toMatchObject({ name: 'Galaxy A55 5G', brand: null, marketValueMinor: '7000000' });
+      expect(audit.before).toMatchObject({ name: 'Samsung Galaxy A55', brand: 'Samsung' });
+      expect(audit.after).toMatchObject({ name: 'Galaxy A55 5G', brand: null });
 
       expect((await t.patch(`/admin/products/${id}`, {}, admin.token)).status).toBe(400);
       expect((await t.patch(`/admin/products/${id}`, { name: null }, admin.token)).status).toBe(400);
@@ -285,7 +278,7 @@ describe('Products and auctions', () => {
         totalBidCount: 0,
         productStatus: 'AVAILABLE',
         createdById: admin.id,
-        product: { id: productId, name: 'Samsung Galaxy A55', marketValue: '65000.00' },
+        product: { id: productId, name: 'Samsung Galaxy A55' },
       });
       expect(Math.abs(Date.parse(res.body.serverTime) - Date.now())).toBeLessThan(60_000);
       expect(await t.prisma.auditLog.count({ where: { action: 'auction.create', entityId: res.body.id } })).toBe(1);
@@ -556,7 +549,7 @@ describe('Auction lifecycle background job', () => {
       // reset() empties Redis, which also holds the job schedule: register it again.
       await t.app.get(AuctionLifecycleProcessor).onApplicationBootstrap();
       const product = await t.prisma.product.create({
-        data: { name: 'Prize', marketValueMinor: 1000n, currency: 'ETB' },
+        data: { name: 'Prize', currency: 'ETB' },
       });
       const auction = await t.prisma.auction.create({
         data: {

@@ -55,7 +55,7 @@ describe('Winners and prize delivery', () => {
   async function wonAuction(winner: Account, title = 'Win a phone'): Promise<{ auctionId: string; winnerId: string }> {
     const product = await t.post(
       '/admin/products',
-      { name: 'Galaxy A55', marketValueMinor: '6500000', images: [{ url: 'https://cdn.example.com/a55.jpg' }] },
+      { name: 'Galaxy A55', images: [{ url: 'https://cdn.example.com/a55.jpg' }] },
       admin.token,
     );
     const body = {

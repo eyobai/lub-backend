@@ -46,7 +46,7 @@ describe('Bidding', () => {
 
   /** An auction open for bidding: fee 75.00, amounts 1.00 … 1000.00 in steps of 1.00. */
   async function liveAuction(override: object = {}): Promise<string> {
-    const product = await t.post('/admin/products', { name: 'Prize', marketValueMinor: '6500000' }, admin.token);
+    const product = await t.post('/admin/products', { name: 'Prize' }, admin.token);
     const body = {
       productId: product.body.id,
       title: 'Win a phone',
@@ -333,7 +333,7 @@ describe('Bidding', () => {
 
     it('accepts bids only while the auction is open', async () => {
       const user = await account(100000n);
-      const product = await t.post('/admin/products', { name: 'Prize', marketValueMinor: '1000' }, admin.token);
+      const product = await t.post('/admin/products', { name: 'Prize' }, admin.token);
       const body = {
         productId: product.body.id,
         title: 'Not open yet',

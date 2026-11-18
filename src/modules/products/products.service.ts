@@ -3,7 +3,6 @@ import { ActorType, AuctionStatus, Prisma, ProductStatus } from '@prisma/client'
 import type { ClientInfo } from '../../common/decorators/client-info.decorator';
 import { paging } from '../../common/dto/page-query.dto';
 import { AppException, ErrorCode } from '../../common/errors/app.exception';
-import { formatMinor } from '../../common/utils/money';
 import { PrismaService } from '../../infra/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CurrencyService } from '../currency/currency.service';
@@ -39,8 +38,6 @@ export function toProductSummary(product: ProductWithRelations): ProductSummaryD
     brand: product.brand,
     model: product.model,
     currency: product.currency,
-    marketValueMinor: product.marketValueMinor.toString(),
-    marketValue: formatMinor(product.marketValueMinor, product.currencyRef.minorUnits),
     specifications: product.specifications as Record<string, SpecificationValue> | null,
     images: product.images.map(({ id, url, altText, sortOrder }) => ({ id, url, altText, sortOrder })),
   };
@@ -110,7 +107,6 @@ export class ProductsService {
           description: dto.description || null,
           brand: dto.brand || null,
           model: dto.model || null,
-          marketValueMinor: BigInt(dto.marketValueMinor),
           currency: currency.code,
           specifications: dto.specifications ?? Prisma.DbNull,
           status: dto.status ?? ProductStatus.AVAILABLE,
@@ -161,7 +157,6 @@ export class ProductsService {
           description: dto.description === undefined ? undefined : dto.description || null,
           brand: dto.brand === undefined ? undefined : dto.brand || null,
           model: dto.model === undefined ? undefined : dto.model || null,
-          marketValueMinor: dto.marketValueMinor === undefined ? undefined : BigInt(dto.marketValueMinor),
           specifications: dto.specifications === null ? Prisma.DbNull : dto.specifications,
           status: dto.status,
         },

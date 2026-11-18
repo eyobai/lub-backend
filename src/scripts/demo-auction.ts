@@ -25,7 +25,6 @@ import { WinnersService } from '../modules/winners/winners.service';
  *   DEMO_WIN_AMOUNT    winning bid in ETB (default 9.30)
  *   DEMO_MIN_BID       smallest bid the auction accepts, in ETB (default 1)
  *   DEMO_BID_FEE       bid fee in ETB (default 80)
- *   DEMO_MARKET_VALUE  product value in ETB (default 230000)
  *   DEMO_IMAGE_URL     product picture address (optional; can be added later in the admin site)
  *   DEMO_AUCTION_ID    continue a run that stopped part-way, instead of creating a new auction
  *   DEMO_CONCURRENCY   bids placed at the same time (default 2; they queue on the auction anyway)
@@ -174,7 +173,6 @@ async function main(): Promise<void> {
   const bidders = Number(process.env.DEMO_BIDDERS ?? 6000);
   const winMinor = etbToMinor(process.env.DEMO_WIN_AMOUNT ?? '9.30');
   const feeMinor = etbToMinor(process.env.DEMO_BID_FEE ?? '80');
-  const valueMinor = etbToMinor(process.env.DEMO_MARKET_VALUE ?? '230000');
   const imageUrl = process.env.DEMO_IMAGE_URL?.trim();
   let minBidMinor = etbToMinor(process.env.DEMO_MIN_BID ?? '1');
   let maxBidMinor = 10000n; // 100 ETB
@@ -217,7 +215,6 @@ async function main(): Promise<void> {
           description: DESCRIPTION,
           brand: 'Apple',
           model: 'iPhone 18 Pro Max',
-          marketValueMinor: valueMinor.toString(),
           specifications: SPECIFICATIONS,
           images: imageUrl ? [{ url: imageUrl, altText: TITLE }] : undefined,
         },

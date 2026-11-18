@@ -50,7 +50,7 @@ describe('Auction results', () => {
 
   /** An auction open for bidding: fee 75.00, amounts 1.00 … 1000.00 in steps of 1.00. */
   async function liveAuction(override: object = {}): Promise<string> {
-    const product = await t.post('/admin/products', { name: 'Prize', marketValueMinor: '6500000' }, admin.token);
+    const product = await t.post('/admin/products', { name: 'Prize' }, admin.token);
     const body = {
       productId: product.body.id,
       title: 'Win a phone',
@@ -430,7 +430,7 @@ describe('Auction results', () => {
       expect(again.body.computedAt).toBe(done.body.computedAt);
       expect(await t.prisma.auditLog.count({ where: { action: 'auction.finalize' } })).toBe(1);
 
-      const draftProduct = await t.post('/admin/products', { name: 'Other', marketValueMinor: '1000' }, admin.token);
+      const draftProduct = await t.post('/admin/products', { name: 'Other' }, admin.token);
       const draft = await t.post(
         '/admin/auctions',
         {

@@ -59,7 +59,7 @@ describe('Pay and bid through Chapa', () => {
 
   /** Open for bidding: fee 7.50 (below the smallest ordinary deposit of 10.00), amounts 1.00 … 1000.00. */
   async function liveAuction(): Promise<string> {
-    const product = await t.post('/admin/products', { name: 'Prize', marketValueMinor: '6500000' }, admin.token);
+    const product = await t.post('/admin/products', { name: 'Prize' }, admin.token);
     const body = {
       productId: product.body.id,
       title: 'Win a phone',

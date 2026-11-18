@@ -484,7 +484,6 @@ model Product {
   description      String?
   brand            String?       @db.VarChar(100)
   model            String?       @db.VarChar(100)
-  marketValueMinor BigInt        @map("market_value_minor")
   currency         String        @db.Char(3)
   specifications   Json?
   status           ProductStatus @default(AVAILABLE)

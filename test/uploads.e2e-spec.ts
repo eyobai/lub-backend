@@ -39,11 +39,12 @@ describe('Product picture uploads', () => {
     let fail = false;
 
     beforeAll(async () => {
-      jest.spyOn(S3Client.prototype, 'send').mockImplementation((command: unknown) => {
+      const fakeSend = (command: unknown): Promise<object> => {
         if (fail) return Promise.reject(new Error('R2 is down'));
         sent.push(command as PutObjectCommand);
         return Promise.resolve({});
-      });
+      };
+      jest.spyOn(S3Client.prototype, 'send').mockImplementation(fakeSend as never);
       t = await createTestApp({ PHONE_VERIFICATION_REQUIRED: 'false', OTP_PROVIDER: 'none', ...STORAGE });
     });
     afterAll(async () => {
