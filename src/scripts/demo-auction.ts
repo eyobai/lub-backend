@@ -26,6 +26,8 @@ import { WinnersService } from '../modules/winners/winners.service';
  *   DEMO_BID_FEE       bid fee in ETB (default 80)
  *   DEMO_MARKET_VALUE  product value in ETB (default 230000)
  *   DEMO_IMAGE_URL     product picture address (optional; can be added later in the admin site)
+ *   DEMO_AUCTION_ID    continue a run that stopped part-way, instead of creating a new auction
+ *   DEMO_CONCURRENCY   bids placed at the same time (default 2; they queue on the auction anyway)
  */
 
 const TITLE = 'iPhone 18 Pro Max — 256GB — Burgundy';
@@ -150,6 +152,20 @@ async function inBatches<T>(items: T[], size: number, work: (item: T, index: num
   );
 }
 
+/** A slow database can let one transaction run past its time limit; the same request is safe to send again. */
+async function withRetry<T>(work: () => Promise<T>, what: string): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await work();
+    } catch (error) {
+      if (attempt >= 5) throw error;
+      const reason = error instanceof Error ? error.message.split('\n')[0] : String(error);
+      console.log(`  retrying ${what} (${attempt}/4): ${reason.slice(0, 120)}`);
+      await new Promise((r) => setTimeout(r, 1000 * attempt));
+    }
+  }
+}
+
 async function main(): Promise<void> {
   const adminPhone = process.env.DEMO_ADMIN_PHONE;
   if (!adminPhone) throw new Error('Set DEMO_ADMIN_PHONE to the phone number of an ADMIN or SUPER_ADMIN account');
@@ -159,6 +175,8 @@ async function main(): Promise<void> {
   const valueMinor = etbToMinor(process.env.DEMO_MARKET_VALUE ?? '230000');
   const imageUrl = process.env.DEMO_IMAGE_URL?.trim();
   const maxBidMinor = 10000n; // 100 ETB
+  const resumeId = process.env.DEMO_AUCTION_ID?.trim();
+  const concurrency = Math.max(1, Math.min(8, Number(process.env.DEMO_CONCURRENCY ?? 2)));
   if (!Number.isInteger(bidders) || bidders < 3 || bidders > 20000) throw new Error('DEMO_BIDDERS must be 3–20000');
 
   const app = await NestFactory.createApplicationContext(AppModule, { logger: ['error', 'warn'] });
@@ -174,40 +192,53 @@ async function main(): Promise<void> {
       throw new Error(`${adminPhone} is not an ADMIN or SUPER_ADMIN account`);
     }
 
-    console.log(`1/6 Creating the product and auction "${TITLE}"`);
-    const product = await app.get(ProductsService).create(
-      admin.id,
-      {
-        name: TITLE,
-        description: DESCRIPTION,
-        brand: 'Apple',
-        model: 'iPhone 18 Pro Max',
-        marketValueMinor: valueMinor.toString(),
-        specifications: SPECIFICATIONS,
-        images: imageUrl ? [{ url: imageUrl, altText: TITLE }] : undefined,
-      },
-      client,
-    );
-    const auctions = app.get(AuctionsService);
-    const auction = await auctions.create(
-      admin.id,
-      {
-        productId: product.id,
-        title: TITLE,
-        description: DESCRIPTION,
-        bidFeeMinor: feeMinor.toString(),
-        minBidMinor: '1',
-        maxBidMinor: maxBidMinor.toString(),
-        bidStepMinor: '1',
-        maxBidsPerUser: null,
-        opensAt: new Date(Date.now() + 60_000).toISOString(),
-        closesAt: new Date(Date.now() + 86_400_000).toISOString(),
-        noUniqueBidPolicy: 'NO_WINNER',
-      } as never,
-      client,
-    );
-    await auctions.activate(admin.id, auction.id, client);
-    console.log(`  auction ${auction.id} is open`);
+    let auctionId: string;
+    let feeToFund = feeMinor;
+    if (resumeId) {
+      const existing = await prisma.auction.findUnique({ where: { id: resumeId } });
+      if (!existing) throw new Error(`No auction ${resumeId}`);
+      if (existing.status !== 'ACTIVE')
+        throw new Error(`Auction ${resumeId} is ${existing.status}; only an open one can be continued`);
+      auctionId = existing.id;
+      feeToFund = existing.bidFeeMinor;
+      console.log(`1/6 Continuing auction ${auctionId} "${existing.title}"`);
+    } else {
+      console.log(`1/6 Creating the product and auction "${TITLE}"`);
+      const product = await app.get(ProductsService).create(
+        admin.id,
+        {
+          name: TITLE,
+          description: DESCRIPTION,
+          brand: 'Apple',
+          model: 'iPhone 18 Pro Max',
+          marketValueMinor: valueMinor.toString(),
+          specifications: SPECIFICATIONS,
+          images: imageUrl ? [{ url: imageUrl, altText: TITLE }] : undefined,
+        },
+        client,
+      );
+      const auctions = app.get(AuctionsService);
+      const auction = await auctions.create(
+        admin.id,
+        {
+          productId: product.id,
+          title: TITLE,
+          description: DESCRIPTION,
+          bidFeeMinor: feeMinor.toString(),
+          minBidMinor: '1',
+          maxBidMinor: maxBidMinor.toString(),
+          bidStepMinor: '1',
+          maxBidsPerUser: null,
+          opensAt: new Date(Date.now() + 60_000).toISOString(),
+          closesAt: new Date(Date.now() + 86_400_000).toISOString(),
+          noUniqueBidPolicy: 'NO_WINNER',
+        } as never,
+        client,
+      );
+      auctionId = auction.id;
+      await auctions.activate(admin.id, auctionId, client);
+      console.log(`  auction ${auctionId} is open. If this run stops, continue it with DEMO_AUCTION_ID=${auctionId}`);
+    }
 
     console.log(`2/6 Creating ${bidders} sample bidders`);
     const passwordHash = await app.get(PasswordService).hash(randomBytes(24).toString('base64'));
@@ -219,6 +250,7 @@ async function main(): Promise<void> {
     const users = await prisma.user.findMany({
       where: { phoneNumber: { in: phones } },
       select: { id: true, phoneNumber: true },
+      orderBy: { phoneNumber: 'asc' },
     });
     const userRole = await prisma.role.findUniqueOrThrow({ where: { name: RoleName.USER } });
     await prisma.userRole.createMany({
@@ -226,18 +258,22 @@ async function main(): Promise<void> {
       skipDuplicates: true,
     });
 
-    console.log(`3/6 Giving each bidder ${feeMinor / 100n} ETB for the bid fee`);
+    console.log(`3/6 Giving each bidder ${feeToFund / 100n} ETB for the bid fee`);
     const wallets = app.get(WalletService);
     await inBatches(
       users,
-      6,
+      Math.min(4, concurrency * 2),
       async (u) => {
-        await wallets.deposit({
-          userId: u.id,
-          amountMinor: feeMinor,
-          idempotencyKey: `demo:${auction.id}:${u.id}`,
-          description: 'Demo top-up',
-        });
+        await withRetry(
+          () =>
+            wallets.deposit({
+              userId: u.id,
+              amountMinor: feeToFund,
+              idempotencyKey: `demo:${auctionId}:${u.id}`,
+              description: 'Demo top-up',
+            }),
+          `top-up for ${u.phoneNumber}`,
+        );
       },
       'top-ups',
     );
@@ -245,10 +281,26 @@ async function main(): Promise<void> {
     console.log('4/6 Placing one bid per bidder');
     const amounts = demoAmounts(users.length, Number(winMinor), Number(maxBidMinor), random(930));
     const bidding = app.get(BiddingService);
+    // A continued run: bids already placed must be the ones this plan gives, or the winner would not be as asked.
+    const placed = new Map(
+      (await prisma.bid.findMany({ where: { auctionId }, select: { userId: true, amountMinor: true } })).map((b) => [
+        b.userId,
+        b.amountMinor,
+      ]),
+    );
+    const mismatched = users.filter((u, i) => placed.has(u.id) && placed.get(u.id) !== BigInt(amounts[i])).length;
+    if (mismatched > 0) {
+      throw new Error(
+        `${mismatched} bids already in this auction differ from the plan (another bidder count?). ` +
+          'Run again with the same DEMO_BIDDERS, or without DEMO_AUCTION_ID to start a new auction.',
+      );
+    }
+    if (placed.size > 0) console.log(`  ${placed.size} bids were already placed; placing the rest`);
+    const todo = users.map((u, i) => ({ u, amount: amounts[i] })).filter(({ u }) => !placed.has(u.id));
     await inBatches(
-      users,
-      6,
-      async (u, i) => {
+      todo,
+      concurrency,
+      async ({ u, amount }) => {
         const user: AuthenticatedUser = {
           id: u.id,
           phoneNumber: u.phoneNumber,
@@ -256,18 +308,21 @@ async function main(): Promise<void> {
           sessionId: 'demo',
           mustChangePassword: false,
         };
-        await bidding.place(user, auction.id, [String(amounts[i])], `demo-${auction.id}`, client);
+        await withRetry(
+          () => bidding.place(user, auctionId, [String(amount)], `demo-${auctionId}`, client),
+          `bid for ${u.phoneNumber}`,
+        );
       },
       'bids',
     );
 
     console.log('5/6 Closing the auction and computing the result');
-    await prisma.auction.update({ where: { id: auction.id }, data: { closesAt: new Date(Date.now() - 1000) } });
+    await prisma.auction.update({ where: { id: auctionId }, data: { closesAt: new Date(Date.now() - 1000) } });
     const processor = app.get(AuctionLifecycleProcessor);
     let winner = null;
     for (let i = 0; i < 10 && !winner; i++) {
       await processor.process();
-      winner = await prisma.winner.findUnique({ where: { auctionId: auction.id }, include: { user: true } });
+      winner = await prisma.winner.findUnique({ where: { auctionId: auctionId }, include: { user: true } });
       if (!winner) await new Promise((r) => setTimeout(r, 2000));
     }
     if (!winner) throw new Error('The auction closed but no winner was recorded; check the admin site');
@@ -278,9 +333,9 @@ async function main(): Promise<void> {
     await winners.verify({ id: admin.id, client }, winner.id, 'Demo auction');
     await winners.publish({ id: admin.id, client }, winner.id);
 
-    const result = await prisma.auctionResult.findUniqueOrThrow({ where: { auctionId: auction.id } });
+    const result = await prisma.auctionResult.findUniqueOrThrow({ where: { auctionId: auctionId } });
     console.log('\nDone.');
-    console.log(`  Auction:        ${auction.id}`);
+    console.log(`  Auction:        ${auctionId}`);
     console.log(
       `  Bids:           ${result.totalBids} (${result.distinctAmounts} different amounts, ${result.uniqueAmounts} bid once)`,
     );
