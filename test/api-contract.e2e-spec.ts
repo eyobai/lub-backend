@@ -22,6 +22,7 @@ const PUBLIC_ROUTES = [
   'GET /api/v1/auctions/:id',
   'GET /api/v1/auctions/:id/result',
   'GET /api/v1/winners',
+  'GET /api/v1/wallet/deposit-options',
   'GET /api/v1/winners/:id',
   // Called by the payment provider, not by a user. The webhook is checked by its signature instead.
   'POST /api/v1/payments/chapa/webhook',

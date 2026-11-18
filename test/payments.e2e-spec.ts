@@ -144,8 +144,9 @@ describe('Deposits through Chapa', () => {
   });
 
   describe('GET /wallet/deposit-options', () => {
-    it('requires authentication', async () => {
-      await t.get('/wallet/deposit-options').expect(401);
+    it('is public, so visitors can see the top-up bonus', async () => {
+      const res = await t.get('/wallet/deposit-options').expect(200);
+      expect(res.body).toMatchObject({ enabled: true, bonusPercent: 100, bonusMaxMinor: '1000000' });
     });
 
     it('reports the provider, test mode and the limits', async () => {

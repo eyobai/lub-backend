@@ -22,6 +22,7 @@ import type { ClientInfo } from '../../common/decorators/client-info.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { IDEMPOTENCY_KEY_HEADER, IdempotencyKey } from '../../common/decorators/idempotency-key.decorator';
+import { Public } from '../../common/decorators/public.decorator';
 import { ErrorResponseDto } from '../../common/dto/error-response.dto';
 import { PageQueryDto } from '../../common/dto/page-query.dto';
 import { DepositDto, DepositOptionsDto, DepositPageDto, StartDepositDto } from './dto/payment.dto';
@@ -30,22 +31,30 @@ import { PaymentsService } from './payments.service';
 const error = (description: string) => ({ description, type: ErrorResponseDto });
 const REPLAYED_HEADER = 'Idempotent-Replayed';
 
+/** Public: the site shows the top-up bonus to visitors too. Only settings, nothing about any user. */
+@ApiTags('Wallet')
+@Controller('wallet')
+export class DepositOptionsController {
+  constructor(private readonly payments: PaymentsService) {}
+
+  @Get('deposit-options')
+  @Public()
+  @ApiOperation({
+    summary: 'Whether money can be added online, the limits and the top-up bonus',
+    description: 'No sign-in needed. Ask this before showing an "add money" form or a bonus offer.',
+  })
+  @ApiOkResponse({ type: DepositOptionsDto })
+  options(): Promise<DepositOptionsDto> {
+    return this.payments.options();
+  }
+}
+
 @ApiTags('Wallet')
 @ApiBearerAuth()
 @ApiUnauthorizedResponse(error('UNAUTHORIZED'))
 @Controller('wallet')
 export class DepositsController {
   constructor(private readonly payments: PaymentsService) {}
-
-  @Get('deposit-options')
-  @ApiOperation({
-    summary: 'Whether money can be added online, and the limits',
-    description: 'Ask this before showing an "add money" form.',
-  })
-  @ApiOkResponse({ type: DepositOptionsDto })
-  options(): Promise<DepositOptionsDto> {
-    return this.payments.options();
-  }
 
   @Post('deposits')
   @ApiOperation({
