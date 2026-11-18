@@ -85,7 +85,9 @@ export class ChapaClient {
    * `authType` is how the payer approves, as Chapa names it (a phone prompt, or a code).
    */
   async directCharge(input: ChapaDirectChargeInput): Promise<{ authType: string | null }> {
-    const { status, body } = await this.request('POST', `/v1/charges?type=${encodeURIComponent(input.type)}`, {
+    // Sent as multipart form data, the format Chapa documents for direct charges.
+    const form = new FormData();
+    const fields: Record<string, string | undefined> = {
       amount: input.amount,
       currency: input.currency,
       tx_ref: input.txRef,
@@ -93,7 +95,10 @@ export class ChapaClient {
       first_name: input.firstName,
       last_name: input.lastName,
       email: input.email,
-    });
+    };
+    for (const [name, value] of Object.entries(fields))
+      if (value !== undefined && value !== '') form.append(name, value);
+    const { status, body } = await this.request('POST', `/v1/charges?type=${encodeURIComponent(input.type)}`, form);
     if (status >= 200 && status < 300 && body.status === 'success') {
       const data = body.data as { auth_type?: unknown } | null | undefined;
       return { authType: typeof data?.auth_type === 'string' ? data.auth_type : null };
@@ -129,9 +134,10 @@ export class ChapaClient {
         headers: {
           Authorization: `Bearer ${secretKey}`,
           Accept: 'application/json',
-          ...(json === undefined ? {} : { 'Content-Type': 'application/json' }),
+          // Form data sets its own multipart content type, boundary included.
+          ...(json === undefined || json instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
         },
-        body: json === undefined ? undefined : JSON.stringify(json),
+        body: json === undefined ? undefined : json instanceof FormData ? json : JSON.stringify(json),
         signal: AbortSignal.timeout(timeoutMs),
         redirect: 'error',
       });

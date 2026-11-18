@@ -138,7 +138,15 @@ export class FakeChapa {
       if (this.refuseInitialize) {
         return { status: 400, body: { message: this.refuseInitialize, status: 'failed', data: null } };
       }
-      const request = JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>;
+      // Like the real API, direct charges take multipart form data.
+      const type = req.headers['content-type'] ?? '';
+      if (!type.startsWith('multipart/form-data')) {
+        return { status: 400, body: { message: 'Expected multipart form data', status: 'failed', data: null } };
+      }
+      const form = await new Response(Buffer.concat(chunks), { headers: { 'content-type': type } }).formData();
+      const request = Object.fromEntries(
+        [...form.entries()].map(([k, v]) => [k, typeof v === 'string' ? v : '']),
+      ) as Record<string, unknown>;
       const txRef = String(request.tx_ref);
       this.transactions.set(txRef, { txRef, request, authorization: req.headers.authorization, verification: null });
       return {
