@@ -68,6 +68,11 @@ export class FakeChapa {
     return all[all.length - 1];
   }
 
+  /** A payment Chapa's inline service started from the payer's browser, which this server never sees. */
+  inlineCharge(txRef: string, request: Record<string, unknown>): void {
+    this.transactions.set(txRef, { txRef, request, authorization: undefined, verification: null });
+  }
+
   /** The payer completed the payment. `changes` lets a test make Chapa report something other than what was asked. */
   pay(txRef: string, changes: Record<string, unknown> = {}): void {
     const tx = this.find(txRef);

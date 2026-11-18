@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Query, Res } from '@nestjs/common';
 import {
   ApiBadGatewayResponse,
   ApiBadRequestResponse,
@@ -25,7 +25,7 @@ import { IDEMPOTENCY_KEY_HEADER, IdempotencyKey } from '../../common/decorators/
 import { Public } from '../../common/decorators/public.decorator';
 import { ErrorResponseDto } from '../../common/dto/error-response.dto';
 import { PageQueryDto } from '../../common/dto/page-query.dto';
-import { DepositDto, DepositOptionsDto, DepositPageDto, StartDepositDto } from './dto/payment.dto';
+import { ChargeNotSentDto, DepositDto, DepositOptionsDto, DepositPageDto, StartDepositDto } from './dto/payment.dto';
 import { PaymentsService } from './payments.service';
 
 const error = (description: string) => ({ description, type: ErrorResponseDto });
@@ -131,5 +131,25 @@ export class DepositsController {
   @ApiNotFoundResponse(error('NOT_FOUND — no such deposit of mine'))
   get(@CurrentUser() user: AuthenticatedUser, @Param('id', ParseUUIDPipe) id: string): Promise<DepositDto> {
     return this.payments.getMine(user.id, id);
+  }
+
+  @Post('deposits/:id/charge-not-sent')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Report that the phone request could not be sent',
+    description:
+      "For a deposit whose phone request the browser sends (see `inlinePublicKey`): Chapa's inline service " +
+      'refused it. The server asks Chapa first; if no payment is known the deposit is closed as never sent ' +
+      '(FAILED with `requestNotSent`), so it does not wait for an approval that cannot come.',
+  })
+  @ApiOkResponse({ type: DepositDto })
+  @ApiBadRequestResponse(error('VALIDATION_FAILED — malformed id or reason'))
+  @ApiNotFoundResponse(error('NOT_FOUND — no such deposit of mine'))
+  chargeNotSent(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ChargeNotSentDto,
+  ): Promise<DepositDto> {
+    return this.payments.chargeNotSent(user.id, id, dto.reason);
   }
 }

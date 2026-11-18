@@ -164,6 +164,7 @@ describe('Deposits through Chapa', () => {
         bonusPercent: 100,
         bonusMaxMinor: '1000000',
         bonusValidDays: 7,
+        inlinePublicKey: null,
       });
     });
   });

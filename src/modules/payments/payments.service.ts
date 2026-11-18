@@ -98,6 +98,12 @@ export class PaymentsService {
     return this.config.payments.provider === CHAPA;
   }
 
+  /** Phone payments are sent by the payer's browser (Chapa inline), not by this server. */
+  private get inline(): boolean {
+    const { publicKey, directChargeMethods } = this.config.payments.chapa;
+    return this.enabled && publicKey !== '' && directChargeMethods.length > 0;
+  }
+
   private get testMode(): boolean {
     return isTestKey(this.config.payments.chapa.secretKey);
   }
@@ -119,6 +125,7 @@ export class PaymentsService {
       bonusMaxMinor: this.config.payments.bonus.maxMinor.toString(),
       bonusValidDays: this.config.payments.bonus.validDays,
       directChargeMethods: this.enabled ? this.config.payments.chapa.directChargeMethods : [],
+      inlinePublicKey: this.inline ? this.config.payments.chapa.publicKey : null,
     };
   }
 
@@ -243,7 +250,9 @@ export class PaymentsService {
     const { publicApiUrl, webAppUrl } = this.config.payments;
     let checkoutUrl: string | null = null;
     try {
-      if (charge && mobile) {
+      if (charge && mobile && this.inline) {
+        // The browser sends the request to the phone, with this deposit's reference; nothing to do here.
+      } else if (charge && mobile) {
         const { authType } = await this.chapa.directCharge({
           txRef: payment.merchantReference,
           amount: minorToDecimal(amountMinor, currency.minorUnits),
@@ -347,6 +356,27 @@ export class PaymentsService {
   }
 
   /** One of my deposits. While it is unpaid this asks the provider again, so the page a payer returns to is current. */
+  /**
+   * The payer's browser could not send the phone request through Chapa's inline service. The deposit is closed
+   * as never sent, after asking Chapa: should Chapa know of a payment after all, it is handled as usual.
+   */
+  async chargeNotSent(userId: string, id: string, reason: string | undefined): Promise<DepositDto> {
+    const found = await this.prisma.paymentTransaction.findFirst({
+      where: { id, userId, direction: PaymentDirection.DEPOSIT },
+    });
+    if (!found) throw new AppException(HttpStatus.NOT_FOUND, ErrorCode.NOT_FOUND, 'Deposit not found');
+    let current = await this.placePaidBids(await this.settle(found, { force: true }));
+    if (current.status === PaymentStatus.PENDING && current.chargeMethod) {
+      const said = (reason ?? '').replace(/\s+/g, ' ').trim().slice(0, 200) || 'the request was not sent';
+      current = await this.prisma.paymentTransaction.update({
+        where: { id: current.id },
+        data: { status: PaymentStatus.FAILED, failureReason: `${NOT_SENT} (inline): ${said}` },
+      });
+      this.logger.warn({ paymentId: current.id, reason: said }, 'Chapa inline did not send a phone request');
+    }
+    return this.toDto(current, await this.currencies.resolve(current.currency, true));
+  }
+
   async getMine(userId: string, id: string): Promise<DepositDto> {
     const found = await this.prisma.paymentTransaction.findFirst({
       where: { id, userId, direction: PaymentDirection.DEPOSIT },

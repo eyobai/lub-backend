@@ -21,6 +21,19 @@ describe('environment validation', () => {
     });
   });
 
+  it('accepts a Chapa public key of the same mode as the secret key only', () => {
+    const chapa = { ...base, PAYMENT_PROVIDER: 'chapa', WEB_APP_URL: 'http://localhost:5173' };
+    expect(() =>
+      validateEnv({ ...chapa, CHAPA_SECRET_KEY: 'CHASECK_TEST-abcdefghij', CHAPA_PUBLIC_KEY: 'CHAPUBK_TEST-abc123' }),
+    ).not.toThrow();
+    expect(() =>
+      validateEnv({ ...chapa, CHAPA_SECRET_KEY: 'CHASECK-abcdefghijk', CHAPA_PUBLIC_KEY: 'CHAPUBK_TEST-abc123' }),
+    ).toThrow(/both be test keys or both live keys/);
+    expect(() =>
+      validateEnv({ ...chapa, CHAPA_SECRET_KEY: 'CHASECK-abcdefghijk', CHAPA_PUBLIC_KEY: 'CHASECK-oops' }),
+    ).toThrow(/CHAPA_PUBLIC_KEY/);
+  });
+
   it('refuses to start in production with the development OTP provider', () => {
     expect(() => validateEnv({ ...base, NODE_ENV: 'production' })).toThrow(
       /OTP_PROVIDER "console" is a development-only provider/,

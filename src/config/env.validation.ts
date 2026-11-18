@@ -88,6 +88,9 @@ export const envSchema = Joi.object({
     .when('PAYMENT_PROVIDER', { is: 'chapa', then: Joi.string().min(10).invalid('').required() }),
   // Optional: without it every webhook is refused and deposits are confirmed on return and by the re-check job.
   CHAPA_WEBHOOK_SECRET: Joi.string().allow('').min(16),
+  CHAPA_PUBLIC_KEY: Joi.string()
+    .allow('')
+    .pattern(/^CHAPUBK(_TEST)?-[A-Za-z0-9]+$/),
   CHAPA_BASE_URL: Joi.string()
     .uri({ scheme: ['http', 'https'] })
     .default('https://api.chapa.co'),
@@ -142,6 +145,13 @@ export function validateEnv(config: Record<string, unknown>): Record<string, unk
   const value = result.value as Record<string, unknown>;
   if (value.PHONE_VERIFICATION_REQUIRED === true && value.OTP_PROVIDER === 'none') {
     throw new Error('Invalid environment configuration: PHONE_VERIFICATION_REQUIRED=true needs an OTP_PROVIDER');
+  }
+  const publicKey = typeof value.CHAPA_PUBLIC_KEY === 'string' ? value.CHAPA_PUBLIC_KEY : '';
+  const secretKey = typeof value.CHAPA_SECRET_KEY === 'string' ? value.CHAPA_SECRET_KEY : '';
+  if (publicKey && secretKey && publicKey.startsWith('CHAPUBK_TEST') !== secretKey.startsWith('CHASECK_TEST')) {
+    throw new Error(
+      'Invalid environment configuration: CHAPA_PUBLIC_KEY and CHAPA_SECRET_KEY must both be test keys or both live keys',
+    );
   }
   if (BigInt(value.DEPOSIT_MIN_MINOR as string) > BigInt(value.DEPOSIT_MAX_MINOR as string)) {
     throw new Error('Invalid environment configuration: DEPOSIT_MIN_MINOR is larger than DEPOSIT_MAX_MINOR');

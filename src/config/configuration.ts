@@ -68,6 +68,11 @@ export interface AppConfig {
     webAppUrl: string;
     chapa: {
       secretKey: string;
+      /**
+       * Public key (CHAPUBK…). When set, phone payments are sent from the payer's browser through Chapa's inline
+       * service instead of by this server; the server still confirms every payment with the secret key.
+       */
+      publicKey: string;
       webhookSecret: string;
       baseUrl: string;
       timeoutMs: number;
@@ -163,6 +168,7 @@ export function configuration(): { app: AppConfig } {
         webAppUrl: (e.WEB_APP_URL ?? '').replace(/\/+$/, ''),
         chapa: {
           secretKey: e.CHAPA_SECRET_KEY ?? '',
+          publicKey: (e.CHAPA_PUBLIC_KEY ?? '').trim(),
           webhookSecret: e.CHAPA_WEBHOOK_SECRET ?? '',
           baseUrl: (e.CHAPA_BASE_URL ?? 'https://api.chapa.co').replace(/\/+$/, ''),
           timeoutMs: num('CHAPA_TIMEOUT_MS', 15000),

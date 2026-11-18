@@ -50,6 +50,17 @@ export class DepositOptionsDto {
   })
   directChargeMethods!: string[];
 
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: 'CHAPUBK-xxxxxxxx',
+    description:
+      'When set, a phone payment is sent from the browser: start the deposit with `charge`, then send the request ' +
+      "to Chapa's inline service with this public key and the deposit's `reference` as tx_ref. Null: the server " +
+      'sends it.',
+  })
+  inlinePublicKey!: string | null;
+
   @ApiProperty({ example: 100, description: 'Top-up bonus, in percent of a wallet top-up. 0: no bonus.' })
   bonusPercent!: number;
 
@@ -83,6 +94,14 @@ export class BidToPayDto extends PlaceBidsDto {
   @ApiProperty({ format: 'uuid', description: 'The auction to bid in.' })
   @IsUUID()
   auctionId!: string;
+}
+
+export class ChargeNotSentDto {
+  @ApiPropertyOptional({ example: 'Transaction initiation failed', description: "What Chapa's inline service said." })
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  reason?: string;
 }
 
 export class StartDepositDto {
