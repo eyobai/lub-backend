@@ -14,14 +14,12 @@ function Phone() {
   };
 }
 
-function Password(name: string, description = 'At least 8 characters, with at least one letter and one digit.') {
+function Password(name: string, description = 'At least 4 characters; any letters, digits or symbols.') {
   return function (target: object, key: string) {
-    ApiProperty({ example: 'Str0ngPassw0rd', minLength: 8, maxLength: 128, description })(target, key);
+    ApiProperty({ example: 'Str0ngPassw0rd', minLength: 4, maxLength: 128, description })(target, key);
     IsString()(target, key);
-    MinLength(8)(target, key);
+    MinLength(4, { message: `${name} must be at least 4 characters long` })(target, key);
     MaxLength(128)(target, key);
-    Matches(/[A-Za-z]/, { message: `${name} must contain at least one letter` })(target, key);
-    Matches(/[0-9]/, { message: `${name} must contain at least one digit` })(target, key);
   };
 }
 

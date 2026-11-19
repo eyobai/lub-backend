@@ -98,13 +98,20 @@ describe('Authentication (integration: real PostgreSQL + Redis)', () => {
 
     it.each([
       ['too short', 'Ab1'],
-      ['without a digit', 'OnlyLettersHere'],
-      ['without a letter', '1234567890'],
+      ['too long', 'x'.repeat(129)],
     ])('rejects a password that is %s', async (_label, password) => {
       const res = await register(PHONE, password);
       expect(res.status).toBe(400);
       expect(res.body.error).toBe('VALIDATION_FAILED');
     });
+
+    it.each([['1234'], ['abcd'], ['ሰላም!'], ['    ']])(
+      'accepts any password of 4 characters or more: %s',
+      async (password) => {
+        const res = await register(PHONE, password);
+        expect(res.status).toBe(201);
+      },
+    );
 
     it('rejects unknown fields such as a client-supplied role or status', async () => {
       const res = await register(PHONE, PASSWORD, { role: 'ADMIN', status: 'ACTIVE' });
